@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>THE HALLWAYS</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; touch-action:none; }
+  body { background:#000; display:flex; justify-content:center; align-items:center; font-family:'Courier New',monospace; }
+  canvas { display:block; cursor:none; touch-action:none; }
+  #overlay {
+    position:absolute; inset:0; background:rgba(0,0,0,0.92);
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    color:#c060ff; z-index:10;
+  }
+  #overlay h1 { font-size:clamp(1.4rem,6vw,3rem); letter-spacing:0.4em; margin-bottom:1rem; text-shadow:0 0 40px #c060ff66; }
+  #overlay p  { color:#aaa; margin:0.3rem 0; font-size:clamp(0.65rem,2vw,0.85rem); }
+  #overlay .hint { color:#c060ff; margin-top:1.5rem; font-size:clamp(0.85rem,2.5vw,1rem); animation:blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  #menu-btn {
+    position:fixed; top:1rem; left:1rem; z-index:50;
+    font-family:'Courier New',monospace; font-size:0.65rem; letter-spacing:0.25em;
+    color:rgba(192,96,255,0.5); background:transparent;
+    border:1px solid rgba(192,96,255,0.25); padding:0.35rem 0.7rem; cursor:pointer;
+    transition:color 0.2s,border-color 0.2s,background 0.2s,opacity 0.2s;
+    text-decoration:none; display:block; opacity:0; pointer-events:none;
+  }
+  #menu-btn.visible { opacity:1; pointer-events:all; }
+  #menu-btn:hover { color:#c060ff; border-color:rgba(192,96,255,0.7); background:rgba(192,96,255,0.07); }
+  #fade-out { position:fixed; inset:0; z-index:99; background:#000; opacity:0; pointer-events:none; transition:opacity 0.4s ease-in; }
+  #fade-out.go { opacity:1; pointer-events:all; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="fade-out"></div>
+<a id="menu-btn" href="index.html" onclick="var f=document.getElementById('fade-out');f.classList.add('go');setTimeout(function(){window.location.href='index.html';},420);return false;">‹ MENU</a>
+<div id="overlay">
+  <h1>THE HALLWAYS</h1>
+  <p>One hallway. Left forever. Right forever.</p>
+  <p style="color:#666;font-size:0.75rem;margin-top:0.5rem;">WASD · Mouse · Shift to run · Space to jump</p>
+  <div class="hint" id="overlay-hint">CLICK TO ENTER</div>
+</div>
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const CFG = {
+  NEAR:           1,
+  FOV_DEG:        90,
+  WALK_SPEED:     160,
+  RUN_SPEED:      340,
+  MOUSE_SENS:     0.0018,
+  HEAD_BOB_SPEED: 3.0,
+  HEAD_BOB_AMT:   4,
+  HEAD_BOB_SWAY:  1.5,
+  CAMERA_H:       50,
+  CROUCH_H:       24,
+  JUMP_VEL:       280,
+  GRAVITY:        700,
+  CROUCH_SPEED:   0.6,
+  RENDER_DIST:    18000,
+  // Corridor dimensions (runs along X — left/right)
+  HALL_W:   480,   // full width of corridor (along Z depth)
+  HALL_H:   320,   // height of corridor
+  // Colours — same backrooms palette
+  FLOOR_COL:   [18,  35, 120],
+  FLOOR_COL2:  [22,  45, 140],
+  CEIL_COL:    [190, 175,  90],
+  WALL_COL:    [210, 190,  80],
+  WALL_EDGE:   [240, 220, 100],
+  BASEBOARD:   [170, 150,  60],
+  CROWN:       [180, 160,  70],
+  BG_COL:      [6,    8,  20],
+};
+
+// Corridor runs along X (side-to-side). "Width" is along Z.
+const HW = CFG.HALL_W / 2;   // half-width (Z extent from centre)
+const HH = CFG.HALL_H;
+const FY = 0;
+const CY = CFG.HALL_H;
+const BH = 14;
+const CH = 16;
+
+// Player starts facing the wall (along Z, perpendicular to corridor)
+const START_YAW = 0;  // 0° = facing +Z wall
+
+const TILE_LEN = 400;
+
+// ─── CANVAS ────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+function rgb(r,g,b) { return `rgb(${r|0},${g|0},${b|0})`; }
+
+// ─── PLAYER ────────────────────────────────────────────────────────────────
+const player = {
+  wx: 0, wy: CFG.CAMERA_H + 2, wz: 0,
+  wxs: 0, wys: CFG.CAMERA_H + 2, wzs: 0,
+  yaw: START_YAW, pitch: 0, yaws: START_YAW, pitchs: 0,
+  bobTime: 0, shakeTime: Math.random() * 100,
+  isMoving: false, isRunning: false, isJumping: false, isCrouching: false,
+  jumpsUsed: 0, velY: 0, landThud: false,
+};
+
+// ─── INPUT ─────────────────────────────────────────────────────────────────
+const isTouchDevice = ('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+let isMobile = isTouchDevice;
+const keys = {};
+let mouseLocked=false, mouseDX=0, mouseDY=0;
+document.addEventListener('keydown', e=>{ keys[e.code]=true; });
+document.addEventListener('keyup',   e=>{ keys[e.code]=false; });
+
+const joy   = { active:false, id:-1, baseX:0, baseY:0, dx:0, dy:0 };
+const lookT = { active:false, id:-1, lastX:0, lastY:0 };
+let touchLookDX=0, touchLookDY=0;
+
+function setupMobileControls() {
+  if (!isMobile) return;
+  document.getElementById('overlay-hint').textContent = 'TAP TO ENTER';
+  const JR = 52;
+  document.addEventListener('touchstart', e=>{
+    e.preventDefault(); initAudio();
+    if (!mouseLocked) { enterMobile(); return; }
+    for (const t of e.changedTouches) {
+      if (t.clientX/window.innerWidth < 0.45) {
+        if (joy.active) continue;
+        joy.active=true; joy.id=t.identifier; joy.baseX=t.clientX; joy.baseY=t.clientY; joy.dx=0; joy.dy=0;
+      } else {
+        if (lookT.active) continue;
+        lookT.active=true; lookT.id=t.identifier; lookT.lastX=t.clientX; lookT.lastY=t.clientY;
+      }
+    }
+  }, {passive:false});
+  document.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier===joy.id) {
+        let dx=t.clientX-joy.baseX, dy=t.clientY-joy.baseY;
+        const mag=Math.sqrt(dx*dx+dy*dy);
+        if (mag>JR) { dx=dx/mag*JR; dy=dy/mag*JR; }
+        joy.dx=dx; joy.dy=dy;
+      }
+      if (t.identifier===lookT.id) {
+        touchLookDX+=(t.clientX-lookT.lastX); touchLookDY+=(t.clientY-lookT.lastY);
+        lookT.lastX=t.clientX; lookT.lastY=t.clientY;
+      }
+    }
+  }, {passive:false});
+  const endFn = e=>{
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier===joy.id)   { joy.active=false; joy.id=-1; joy.dx=0; joy.dy=0; keys['KeyW']=keys['KeyS']=keys['KeyA']=keys['KeyD']=false; }
+      if (t.identifier===lookT.id) { lookT.active=false; lookT.id=-1; }
+    }
+  };
+  document.addEventListener('touchend',    endFn, {passive:false});
+  document.addEventListener('touchcancel', endFn, {passive:false});
+}
+
+function applyJoystickToKeys() {
+  if (!isMobile) return;
+  if (!joy.active||(joy.dx===0&&joy.dy===0)) { keys['KeyW']=keys['KeyS']=keys['KeyA']=keys['KeyD']=false; return; }
+  const mag=Math.sqrt(joy.dx*joy.dx+joy.dy*joy.dy);
+  if (mag<10) { keys['KeyW']=keys['KeyS']=keys['KeyA']=keys['KeyD']=false; return; }
+  const nx=joy.dx/mag, ny=joy.dy/mag;
+  keys['KeyW']=ny<-0.25; keys['KeyS']=ny>0.25; keys['KeyD']=nx>0.25; keys['KeyA']=nx<-0.25;
+}
+
+function enterMobile()  { initAudio(); mouseLocked=true; document.getElementById('overlay').style.display='none'; document.getElementById('menu-btn').classList.remove('visible'); }
+function enterDesktop() { initAudio(); canvas.requestPointerLock(); }
+
+document.addEventListener('mousemove', e=>{ if(!mouseLocked) return; mouseDX+=e.movementX; mouseDY+=e.movementY; });
+let zoomFOV=CFG.FOV_DEG, zoomTarget=CFG.FOV_DEG;
+const ZOOM_MIN=8, ZOOM_MAX=100, ZOOM_STEP=6;
+document.addEventListener('wheel', e=>{ if(!mouseLocked) return; zoomTarget=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zoomTarget+Math.sign(e.deltaY)*ZOOM_STEP)); }, {passive:true});
+document.getElementById('overlay').addEventListener('click', ()=>{ if(isMobile) enterMobile(); else enterDesktop(); });
+document.getElementById('overlay').addEventListener('touchstart', e=>{ e.preventDefault(); enterMobile(); }, {passive:false});
+canvas.addEventListener('click', ()=>{ if(!isMobile&&!mouseLocked) enterDesktop(); });
+document.addEventListener('pointerlockchange', ()=>{
+  if (isMobile) return;
+  mouseLocked = document.pointerLockElement===canvas;
+  if (mouseLocked && audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+  document.getElementById('overlay').style.display = mouseLocked ? 'none' : 'flex';
+  document.getElementById('menu-btn').classList.toggle('visible', !mouseLocked);
+});
+
+// ─── CAMERA ────────────────────────────────────────────────────────────────
+function worldToCamera(wx,wy,wz) {
+  let x=wx-player.wxs, y=wy-player.wys, z=wz-player.wzs;
+  const yaw=-player.yaws;
+  const x1= x*Math.cos(yaw)+z*Math.sin(yaw);
+  const z1=-x*Math.sin(yaw)+z*Math.cos(yaw);
+  const cp=Math.cos(player.pitchs), sp=Math.sin(player.pitchs);
+  return [x1, y*cp-z1*sp, y*sp+z1*cp];
+}
+function project(cx,cy,cz) {
+  if (cz<=CFG.NEAR) return null;
+  const aspect=H/W, focal=(W*0.5)/Math.tan((zoomFOV*0.5)*Math.PI/180);
+  const s=focal/cz;
+  const sx=W*0.5+cx*s, sy=H*0.5-cy*s*aspect;
+  return (isFinite(sx)&&isFinite(sy)) ? [sx,sy] : null;
+}
+function clipNear(poly) {
+  if (!poly||poly.length<3) return [];
+  const N=CFG.NEAR, ins=p=>p[2]>=N;
+  const ix=(a,b)=>{ const dz=b[2]-a[2]; if(Math.abs(dz)<1e-7) return null; const t=(N-a[2])/dz; return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,N+0.001]; };
+  const out=[]; let prev=poly[poly.length-1], pi=ins(prev);
+  for (const cur of poly) {
+    const ci=ins(cur);
+    if (ci&&pi) out.push(cur);
+    else if (ci&&!pi) { const i=ix(prev,cur); if(i) out.push(i); out.push(cur); }
+    else if (!ci&&pi) { const i=ix(prev,cur); if(i) out.push(i); }
+    prev=cur; pi=ci;
+  }
+  return out.length>=3 ? out : [];
+}
+function fog(r,g,b,d) {
+  if (d<600) return [r,g,b];
+  const t=Math.min(1,(d-600)/(CFG.RENDER_DIST-600));
+  const [fr,fg,fb]=CFG.BG_COL;
+  return [(r+(fr-r)*t)|0,(g+(fg-g)*t)|0,(b+(fb-b)*t)|0];
+}
+
+// ─── POLY QUEUE ────────────────────────────────────────────────────────────
+const _pq = [];
+function poly(pts,color,edgeColor) {
+  let ax=0,ay=0,az=0;
+  for (const [x,y,z] of pts) { ax+=x; ay+=y; az+=z; }
+  const n=pts.length; ax/=n; ay/=n; az/=n;
+  const dx=ax-player.wxs, dy=ay-player.wys, dz=az-player.wzs;
+  _pq.push({ d:dx*dx+dy*dy+dz*dz, pts, color, edgeColor });
+}
+function flush() {
+  _pq.sort((a,b)=>b.d-a.d);
+  for (const {pts,color,edgeColor} of _pq) {
+    const cam=pts.map(([x,y,z])=>worldToCamera(x,y,z));
+    if (cam.every(p=>p[2]<CFG.NEAR)) continue;
+    let ax=0,ay=0,az=0; for(const p of cam){ax+=p[0];ay+=p[1];az+=p[2];} ax/=cam.length;ay/=cam.length;az/=cam.length;
+    const dist=Math.sqrt(ax*ax+az*az);
+    if (dist>CFG.RENDER_DIST*1.5) continue;
+    let [r,g,b]=color; [r,g,b]=fog(r,g,b,dist);
+    const cl=clipNear(cam); if(cl.length<3) continue;
+    const sc=cl.map(([cx,cy,cz])=>project(cx,cy,cz)); if(sc.some(p=>!p)) continue;
+    const mnX=Math.min(...sc.map(p=>p[0])),mxX=Math.max(...sc.map(p=>p[0]));
+    const mnY=Math.min(...sc.map(p=>p[1])),mxY=Math.max(...sc.map(p=>p[1]));
+    if(mxX<-200||mnX>W+200||mxY<-200||mnY>H+200) continue;
+    if((mxX-mnX)<0.4&&(mxY-mnY)<0.4) continue;
+    ctx.beginPath(); ctx.moveTo(sc[0][0],sc[0][1]);
+    for (let i=1;i<sc.length;i++) ctx.lineTo(sc[i][0],sc[i][1]);
+    ctx.closePath(); ctx.fillStyle=rgb(r,g,b); ctx.fill();
+    if (edgeColor) {
+      let [er,eg,eb]=edgeColor; [er,eg,eb]=fog(er,eg,eb,dist);
+      ctx.strokeStyle=rgb(er,eg,eb); ctx.lineWidth=1.2; ctx.stroke();
+    }
+  }
+  _pq.length=0;
+}
+
+// ─── GEOMETRY ──────────────────────────────────────────────────────────────
+// Corridor runs along X. Each tile covers x in [tileX, tileX+TILE_LEN].
+// Walls: z = -HW (south/front) and z = +HW (north/back). No end caps — infinite.
+function emitTile(tileX) {
+  const x0 = tileX, x1 = tileX + TILE_LEN;
+  const FC = CFG.FLOOR_COL, FC2 = CFG.FLOOR_COL2;
+  const CC = CFG.CEIL_COL, WC = CFG.WALL_COL, WE = CFG.WALL_EDGE;
+  const BS = CFG.BASEBOARD, CR = CFG.CROWN;
+
+  const ti = Math.round(tileX / TILE_LEN);
+  const floorCol = ti % 2 === 0 ? FC : FC2;
+
+  // Floor
+  poly([[x0,FY,-HW],[x1,FY,-HW],[x1,FY,HW],[x0,FY,HW]], floorCol, null);
+  // Ceiling
+  poly([[x0,CY,-HW],[x1,CY,-HW],[x1,CY,HW],[x0,CY,HW]], CC, null);
+  // Glow strip (centre of ceiling along X)
+  poly([[x0,CY-1,-25],[x1,CY-1,-25],[x1,CY-1,25],[x0,CY-1,25]], [230,215,130], null);
+
+  // Front wall (z = -HW) — face inward (+Z direction)
+  poly([[x1,FY,-HW],[x0,FY,-HW],[x0,CY,-HW],[x1,CY,-HW]], WC, WE);
+  // Baseboard front
+  poly([[x1,FY,-HW],[x0,FY,-HW],[x0,BH,-HW],[x1,BH,-HW]], BS, null);
+  // Crown front
+  poly([[x1,CY-CH,-HW],[x0,CY-CH,-HW],[x0,CY,-HW],[x1,CY,-HW]], CR, null);
+
+  // Back wall (z = +HW) — face inward (-Z direction)
+  poly([[x0,FY,HW],[x1,FY,HW],[x1,CY,HW],[x0,CY,HW]], WC, WE);
+  // Baseboard back
+  poly([[x0,FY,HW],[x1,FY,HW],[x1,BH,HW],[x0,BH,HW]], BS, null);
+  // Crown back
+  poly([[x0,CY-CH,HW],[x1,CY-CH,HW],[x1,CY,HW],[x0,CY,HW]], CR, null);
+}
+
+// ─── COLLISION ─────────────────────────────────────────────────────────────
+// Corridor walls: z must stay within [-HW+P_RAD, HW-P_RAD]. X is infinite.
+const P_RAD = 30;
+function clampToHallway(nx, nz) {
+  const cz = Math.max(-HW + P_RAD, Math.min(HW - P_RAD, nz));
+  return [nx, cz];
+}
+
+// ─── UPDATE ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+function update(dt) {
+  if (isMobile&&(touchLookDX||touchLookDY)) {
+    player.yaw+=touchLookDX*0.008; player.pitch-=touchLookDY*0.008;
+    touchLookDX=0; touchLookDY=0;
+  } else {
+    player.yaw+=mouseDX*CFG.MOUSE_SENS; player.pitch-=mouseDY*CFG.MOUSE_SENS;
+    mouseDX=0; mouseDY=0;
+  }
+  player.pitch=Math.max(-1.4,Math.min(1.4,player.pitch));
+  zoomFOV+=(zoomTarget-zoomFOV)*0.15;
+  applyJoystickToKeys();
+
+  if ((keys['Space']||keys['KeyF'])&&!player.isCrouching&&player.jumpsUsed<2) {
+    player.velY=CFG.JUMP_VEL; player.jumpsUsed++; player.isJumping=true;
+  }
+  player.isCrouching=!!(keys['KeyC']||keys['ControlLeft']||keys['ControlRight']);
+
+  player.velY-=CFG.GRAVITY*dt; player.wy+=player.velY*dt;
+  const floorY=CFG.CAMERA_H+(player.isCrouching?-(CFG.CAMERA_H-CFG.CROUCH_H):0);
+  if (player.wy<=floorY&&player.velY<=0) {
+    const was=player.isJumping; player.wy=floorY; player.velY=0;
+    player.isJumping=false; player.jumpsUsed=0; if(was) player.landThud=true;
+  }
+  if (player.wy>CY-CFG.CAMERA_H/2) { player.wy=CY-CFG.CAMERA_H/2; if(player.velY>0)player.velY=0; }
+
+  player.isRunning=(keys['ShiftLeft']||keys['ShiftRight'])&&!player.isCrouching;
+  let speed=player.isRunning?CFG.RUN_SPEED:CFG.WALK_SPEED;
+  if (player.isCrouching) speed*=CFG.CROUCH_SPEED;
+  const fX=Math.sin(player.yaw),fZ=Math.cos(player.yaw),rX=Math.cos(player.yaw),rZ=-Math.sin(player.yaw);
+  let mx=0,mz=0; player.isMoving=false;
+  if(keys['KeyW']||keys['ArrowUp'])   {mx+=fX*speed*dt;mz+=fZ*speed*dt;player.isMoving=true;}
+  if(keys['KeyS']||keys['ArrowDown']) {mx-=fX*speed*dt;mz-=fZ*speed*dt;player.isMoving=true;}
+  if(keys['KeyD']||keys['ArrowRight']){mx+=rX*speed*dt;mz+=rZ*speed*dt;player.isMoving=true;}
+  if(keys['KeyA']||keys['ArrowLeft']) {mx-=rX*speed*dt;mz-=rZ*speed*dt;player.isMoving=true;}
+
+  const [cx, cz] = clampToHallway(player.wx + mx, player.wz + mz);
+  player.wx = cx; player.wz = cz;
+
+  // Smooth camera
+  const bob=player.isMoving&&!player.isJumping;
+  if(bob) player.bobTime+=dt*CFG.HEAD_BOB_SPEED;
+  player.shakeTime+=dt;
+  const bobY=bob?Math.sin(player.bobTime*2*Math.PI)*CFG.HEAD_BOB_AMT:0;
+  const bobX=bob?Math.sin(player.bobTime*Math.PI)*CFG.HEAD_BOB_SWAY:0;
+  const shkX=Math.sin(player.shakeTime*13.7)*0.08, shkY=Math.cos(player.shakeTime*11.3)*0.08;
+  const crO=player.isCrouching?-(CFG.CAMERA_H-CFG.CROUCH_H):0;
+  const sM=player.isMoving?0.25:1.0, sY=player.isCrouching||player.isJumping?0.35:sM;
+  player.wxs+=(player.wx+bobX+shkX-player.wxs)*sM;
+  player.wys+=(player.wy+crO+bobY+shkY-player.wys)*sY;
+  player.wzs+=(player.wz-player.wzs)*sM;
+  player.yaws+=(player.yaw-player.yaws)*0.3;
+  player.pitchs+=(player.pitch-player.pitchs)*0.3;
+}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────
+function render() {
+  ctx.fillStyle=rgb(...CFG.BG_COL); ctx.fillRect(0,0,W,H);
+
+  const px = player.wxs;
+  const range = CFG.RENDER_DIST + TILE_LEN;
+  const startIdx = Math.floor((px - range) / TILE_LEN);
+  const endIdx   = Math.ceil( (px + range) / TILE_LEN);
+  for (let i = startIdx; i <= endIdx; i++) {
+    emitTile(i * TILE_LEN);
+  }
+
+  flush();
+
+  const zT=Math.max(0,1-(zoomFOV-ZOOM_MIN)/(CFG.FOV_DEG-ZOOM_MIN));
+  if (zT>0.01) {
+    const g=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.8);
+    g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,`rgba(0,0,0,${(zT*0.75).toFixed(2)})`);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  }
+}
+
+// ─── AUDIO SYSTEM ──────────────────────────────────────────────────────────
+let audioCtx = null, masterGain = null, reverbNode = null;
+let footstepTimer = 0, audioReady = false;
+
+function initAudio() {
+  if (!audioReady) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+    masterGain = audioCtx.createGain(); masterGain.gain.value = 0.7;
+    masterGain.connect(audioCtx.destination);
+    reverbNode = audioCtx.createConvolver();
+    reverbNode.buffer = makeReverbIR(audioCtx, 3.2, 0.12);
+    const revG = audioCtx.createGain(); revG.gain.value = 0.55;
+    reverbNode.connect(revG); revG.connect(masterGain);
+
+    // Slightly higher pitch drone for a different feel — narrow lateral corridor
+    const drone = audioCtx.createOscillator(); drone.type = 'sine'; drone.frequency.value = 52;
+    const drone2 = audioCtx.createOscillator(); drone2.type = 'sine'; drone2.frequency.value = 52.8;
+    const dg = audioCtx.createGain(); dg.gain.setValueAtTime(0, audioCtx.currentTime);
+    dg.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 4);
+    drone.connect(dg); drone2.connect(dg); dg.connect(masterGain); dg.connect(reverbNode);
+    drone.start(); drone2.start();
+
+    function noiseLoop() {
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate*2, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src = audioCtx.createBufferSource(); src.buffer = buf;
+      const lpf = audioCtx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=200;
+      const ng = audioCtx.createGain(); ng.gain.value=0.035;
+      src.connect(lpf); lpf.connect(ng); ng.connect(masterGain);
+      src.start(); src.stop(audioCtx.currentTime+2); src.onended=noiseLoop;
+    }
+    noiseLoop();
+    audioReady = true;
+  } else if (audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+}
+
+function makeReverbIR(ctx, dur, decay) {
+  const sr=ctx.sampleRate, len=sr*dur, buf=ctx.createBuffer(2,len,sr);
+  for (let ch=0;ch<2;ch++) {
+    const d=buf.getChannelData(ch);
+    for (let i=0;i<len;i++) {
+      d[i]=(Math.random()*2-1)*Math.exp(-decay*i/sr*12);
+      if (i===Math.floor(0.02*sr)||i===Math.floor(0.04*sr)) d[i]+=(Math.random()*2-1)*0.5;
+    }
+  }
+  return buf;
+}
+
+function playFootstep() {
+  if (!audioReady) return;
+  const t=audioCtx.currentTime, dur=0.16;
+  const nb=audioCtx.createBuffer(1,audioCtx.sampleRate*dur,audioCtx.sampleRate);
+  const nd=nb.getChannelData(0); for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  const ns=audioCtx.createBufferSource(); ns.buffer=nb;
+  const lpf=audioCtx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=260;
+  const bo=audioCtx.createOscillator(); bo.type='sine'; bo.frequency.setValueAtTime(40,t); bo.frequency.exponentialRampToValueAtTime(20,t+dur);
+  const be=audioCtx.createGain(); be.gain.setValueAtTime(0.18,t); be.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  const ne=audioCtx.createGain(); ne.gain.setValueAtTime(0,t); ne.gain.linearRampToValueAtTime(0.25,t+0.008); ne.gain.linearRampToValueAtTime(0,t+dur);
+  const sg=audioCtx.createGain(); sg.gain.value=0.38;
+  ns.connect(lpf); lpf.connect(ne); ne.connect(sg); bo.connect(be); be.connect(sg); sg.connect(masterGain);
+  const srv=audioCtx.createGain(); srv.gain.value=0.18; sg.connect(srv); srv.connect(reverbNode);
+  ns.start(t); ns.stop(t+dur); bo.start(t); bo.stop(t+dur);
+}
+
+function playLandThud() {
+  if (!audioReady) return;
+  const t=audioCtx.currentTime, dur=0.22;
+  const nb=audioCtx.createBuffer(1,audioCtx.sampleRate*dur,audioCtx.sampleRate);
+  const nd=nb.getChannelData(0); for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+  const ns=audioCtx.createBufferSource(); ns.buffer=nb;
+  const lpf=audioCtx.createBiquadFilter(); lpf.type='lowpass'; lpf.frequency.value=200;
+  const bo=audioCtx.createOscillator(); bo.type='sine'; bo.frequency.setValueAtTime(55,t); bo.frequency.exponentialRampToValueAtTime(18,t+dur);
+  const be=audioCtx.createGain(); be.gain.setValueAtTime(0.32,t); be.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  const ne=audioCtx.createGain(); ne.gain.setValueAtTime(0,t); ne.gain.linearRampToValueAtTime(0.45,t+0.01); ne.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  const sg=audioCtx.createGain(); sg.gain.value=0.6;
+  ns.connect(lpf); lpf.connect(ne); ne.connect(sg); bo.connect(be); be.connect(sg); sg.connect(masterGain);
+  const rv=audioCtx.createGain(); rv.gain.value=0.3; sg.connect(rv); rv.connect(reverbNode);
+  ns.start(t); ns.stop(t+dur); bo.start(t); bo.stop(t+dur);
+}
+
+function updateFootsteps(dt) {
+  if (player.landThud) { player.landThud=false; playLandThud(); footstepTimer=0; return; }
+  if (!player.isMoving||player.isJumping) { footstepTimer=0; return; }
+  const interval=player.isRunning?0.30:player.isCrouching?0.72:0.52;
+  footstepTimer+=dt;
+  if (footstepTimer>=interval) { footstepTimer-=interval; playFootstep(); }
+}
+
+// ─── BOOT ──────────────────────────────────────────────────────────────────
+function loop(ts) {
+  const dt=Math.min((ts-lastTime)/1000,0.05); lastTime=ts;
+  if (mouseLocked) { update(dt); updateFootsteps(dt); }
+  if (mouseLocked) render();
+  requestAnimationFrame(loop);
+}
+if (!isMobile) document.getElementById('overlay-hint').textContent='CLICK TO ENTER';
+setupMobileControls();
+requestAnimationFrame(t=>{lastTime=t; requestAnimationFrame(loop);});
+</script>
+</body>
+</html>

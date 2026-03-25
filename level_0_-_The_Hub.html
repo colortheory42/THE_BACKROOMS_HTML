@@ -1,0 +1,2054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>THE FLOORS</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="THE FLOORS">
+<meta name="theme-color" content="#000000">
+<link id="pwa-manifest" rel="manifest">
+<script>
+// ── Inline PWA manifest (no external file needed) ──────────────────────────
+(function() {
+  const manifest = {
+    name: "THE FLOORS",
+    short_name: "THE FLOORS",
+    description: "Infinite procedural rooms. Level Zero.",
+    start_url: "./",
+    display: "fullscreen",
+    orientation: "landscape",
+    background_color: "#000000",
+    theme_color: "#000000",
+    icons: [
+      {
+        src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%23000'/%3E%3Crect x='40' y='40' width='180' height='180' fill='none' stroke='%23f0e060' stroke-width='8'/%3E%3Crect x='292' y='40' width='180' height='180' fill='none' stroke='%23f0e060' stroke-width='8'/%3E%3Crect x='40' y='292' width='180' height='180' fill='none' stroke='%23f0e060' stroke-width='8'/%3E%3Crect x='292' y='292' width='180' height='180' fill='none' stroke='%23f0e060' stroke-width='8'/%3E%3C/svg%3E",
+        sizes: "512x512",
+        type: "image/svg+xml",
+        purpose: "any maskable"
+      }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+})();
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+  body { background: #000; display: flex; justify-content: center; align-items: center;
+         font-family: 'Courier New', monospace; }
+  canvas { display: block; cursor: none; image-rendering: pixelated; touch-action: none; }
+  #overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,0.92);
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    color: #f0e060; z-index: 10;
+  }
+  #overlay h1 {
+    font-size: clamp(1.4rem, 6vw, 3rem); letter-spacing: 0.4em; margin-bottom: 1rem;
+    text-shadow: 0 0 40px #f0e06088;
+  }
+  #overlay p { color: #aaa; margin: 0.3rem 0; font-size: clamp(0.65rem, 2vw, 0.85rem); }
+  #overlay .hint { color: #f0e060; margin-top: 1.5rem; font-size: clamp(0.85rem, 2.5vw, 1rem); animation: blink 1.2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  #death-screen {
+    position: absolute; inset: 0; background: rgba(0,0,0,0);
+    display: none; flex-direction: column; justify-content: center; align-items: center;
+    z-index: 20; transition: background 0.1s;
+  }
+  #death-screen.visible { display: flex; }
+  #death-screen h2 {
+    color: #6090ff; font-size: 1.4rem; letter-spacing: 0.3em;
+    opacity: 0; transition: opacity 2s;
+    text-shadow: 0 0 40px #3060ff88; margin-bottom: 0.8rem;
+  }
+  #death-screen p {
+    color: #2a3c7a; font-size: 0.75rem; letter-spacing: 0.2em;
+    opacity: 0; transition: opacity 2s 1s;
+  }
+  #death-screen .restart {
+    color: #3a50a0; font-size: 0.7rem; margin-top: 2rem;
+    opacity: 0; transition: opacity 2s 2.5s;
+    cursor: pointer; letter-spacing: 0.15em;
+  }
+  #death-screen .restart:hover { color: #90b0ff; }
+  #death-screen.show-text h2,
+  #death-screen.show-text p,
+  #death-screen.show-text .restart { opacity: 1; }
+
+  #menu-btn {
+    position: fixed; top: 1rem; left: 1rem; z-index: 50;
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem; letter-spacing: 0.25em;
+    color: rgba(240,224,96,0.5); background: transparent;
+    border: 1px solid rgba(240,224,96,0.25);
+    padding: 0.35rem 0.7rem; cursor: pointer;
+    transition: color 0.2s, border-color 0.2s, background 0.2s, opacity 0.2s;
+    text-decoration: none; display: block;
+    opacity: 0; pointer-events: none;
+  }
+  #menu-btn.visible { opacity: 1; pointer-events: all; }
+  #menu-btn:hover { color: #f0e060; border-color: rgba(240,224,96,0.7); background: rgba(240,224,96,0.07); }
+  #fade-out { position: fixed; inset: 0; z-index: 99; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.4s ease-in; }
+  #fade-out.go { opacity: 1; pointer-events: all; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="fade-out"></div>
+<a id="menu-btn" href="index.html" onclick="var f=document.getElementById('fade-out');f.classList.add('go');setTimeout(function(){window.location.href='index.html';},420);return false;">‹ MENU</a>
+<div id="overlay">
+  <h1>THE FLOORS</h1>
+  <p>Infinite procedural rooms — built from mathematical first principles</p>
+  <p style="color:#666;font-size:0.75rem;margin-top:0.5rem;">Software 3D · Perspective Projection · Painter's Algorithm</p>
+  <div class="hint" id="overlay-hint">TOUCH TO ENTER</div>
+</div>
+<div id="death-screen">
+  <h2>THE ABYSS</h2>
+  <p>some floors have no bottom</p>
+  <div class="restart" onclick="restartGame()">[ tap to wake up ]</div>
+</div>
+
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────────────────────
+const CFG = {
+  PILLAR_SPACING: 400,
+  WALL_HEIGHT:    400,   // base wall height — actual per-floor height is seeded
+  FLOOR_Y:        0,     // local floor Y within a floor level (always 0)
+  WALL_THICKNESS: 20,
+  NEAR:           1,
+  FOV_DEG:        90,
+  RENDER_DIST:    2000,
+  WALK_SPEED:     160,
+  RUN_SPEED:      320,
+  MOUSE_SENS:     0.0018,
+  HEAD_BOB_SPEED: 3.0,
+  HEAD_BOB_AMT:   4,
+  HEAD_BOB_SWAY:  1.5,
+  CAMERA_H:       50,
+  CROUCH_H:       24,
+  JUMP_VEL:       280,
+  GRAVITY:        700,
+  CROUCH_SPEED:   0.6,
+  HALLWAY_W:      100,
+  DOORWAY_W:      60,
+  SLIT_W:         14,
+  LIFT_H:         32,
+  LIFT_CHANCE:    0.12,
+  PIT_SUBDIVS:    4,
+  PIT_STRIP_W:    18,
+  PIT_WALL_COL:   [15, 25, 10],
+  PIT_FLOOR_COL:  [8,  12,  5],
+  FLOOR_H_MIN:    140,   // minimum floor separation (cramped crawlspace feel)
+  FLOOR_H_MAX:    1200,  // maximum floor separation (cathedral-scale voids)
+  HOLE_CHANCE:    0.055, // extra clean drop holes beyond pit rooms
+  RENDER_FLOORS:  3,     // floors above/below current to render
+  SLAB_THICKNESS: 24,    // thickness of floor/ceiling slab in world units
+  // Colors
+  WALL_COL:    [240, 220, 80],
+  CARPET_COL:  [30,  60,  140],
+  CEILING_COL: [190, 185, 170], // concrete underside — not blue
+  SLAB_COL:    [60,  55,  50],  // dark concrete slab edge band
+  PILLAR_COL:  [250, 230, 90],
+  BG_COL:      [20,  40,  80],
+  EDGE_COL:    [220, 190, 50],
+  BASE_COL:    [210, 190, 60],
+};
+
+// ─── CANVAS SETUP ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── DETERMINISTIC RNG ─────────────────────────────────────────────────────
+function seededRandom(seed) {
+  let s = seed | 0;
+  s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+  s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+  s ^= s >>> 16;
+  return (s >>> 0) / 0xFFFFFFFF;
+}
+
+// ─── ZONE SYSTEM ───────────────────────────────────────────────────────────
+const ZONE_SIZE = 3200;
+
+function getZoneOpenness(wx, wz, seed) {
+  const zx = Math.floor(wx / ZONE_SIZE);
+  const zz = Math.floor(wz / ZONE_SIZE);
+  const h = (zx * 73856093 ^ zz * 19349663 ^ seed * 1234567) | 0;
+  const r = seededRandom(h);
+  if (r < 0.45) return seededRandom(h ^ 0xdeadbeef) * 0.9 + 0.1; // wider range, more frequent
+  return 0;
+}
+
+// ─── SHAFT SYSTEM ──────────────────────────────────────────────────────────
+// A shaft is a carved void box: N floors tall, M×M cells wide.
+// Bottom floor has carpet. Top has ceiling. Interior is empty air.
+const SHAFT = {
+  CHANCE:          0.38,    // probability a zone spawns a shaft
+  WIDTH_CELLS_MIN: 2,       // narrow shafts still exist
+  WIDTH_CELLS_MAX: 14,      // atrium-scale voids up to ~14 cells wide
+  DEPTH_CELLS_MIN: 2,
+  DEPTH_CELLS_MAX: 14,
+  FLOOR_COUNT_MIN: 4,       // can be shorter now
+  FLOOR_COUNT_MAX: 80,      // taller ceiling for rare mega-voids
+};
+
+// Returns shaft descriptor {x0,z0,x1,z1,floorMin,floorMax} if a shaft exists
+// at this zone, otherwise null. Keyed per zone + floor band.
+const _shaftCache = new Map();
+
+function getShaftForZone(zx, zz) {
+  const key = `${zx}:${zz}`;
+  if (_shaftCache.has(key)) return _shaftCache.get(key);
+
+  const h = (zx * 73856093 ^ zz * 19349669 ^ 0xc0ffee42) | 0;
+  const r = seededRandom(h);
+  if (r >= SHAFT.CHANCE) { _shaftCache.set(key, null); return null; }
+
+  const G   = CFG.PILLAR_SPACING;
+  const ZS  = ZONE_SIZE;
+  // Align shaft origin to grid
+  const r2  = seededRandom(h ^ 0x1a2b3c4d);
+  const r3  = seededRandom(h ^ 0x5e6f7a8b);
+  const r4  = seededRandom(h ^ 0x9c0d1e2f);
+  const r5  = seededRandom(h ^ 0x3f7a9c1e);
+  const r6  = seededRandom(h ^ 0xd34db33f);
+  const r7  = seededRandom(h ^ 0xc0de1234);
+
+  // Width/depth skewed small — most shafts are narrow, rare ones are atrium-scale
+  const wRange = SHAFT.WIDTH_CELLS_MAX - SHAFT.WIDTH_CELLS_MIN;
+  const dRange = SHAFT.DEPTH_CELLS_MAX - SHAFT.DEPTH_CELLS_MIN;
+  const wCells = SHAFT.WIDTH_CELLS_MIN + Math.floor(r6 * r6 * wRange); // squared = skewed narrow
+  const dCells = SHAFT.DEPTH_CELLS_MIN + Math.floor(r7 * r7 * dRange);
+
+  // Pick a grid-aligned cell inside this zone
+  const cellsInZone = Math.floor(ZS / G);
+  const offX = Math.floor(r2 * Math.max(1, cellsInZone - wCells)) * G;
+  const offZ = Math.floor(r3 * Math.max(1, cellsInZone - dCells)) * G;
+  const x0   = zx * ZS + offX;
+  const z0   = zz * ZS + offZ;
+  const x1   = x0 + wCells * G;
+  const z1   = z0 + dCells * G;
+
+  // Each shaft rolls its own height: skewed so most are short but rare ones are enormous
+  const countRange = SHAFT.FLOOR_COUNT_MAX - SHAFT.FLOOR_COUNT_MIN;
+  const floorCount = SHAFT.FLOOR_COUNT_MIN + Math.floor(r5 * r5 * countRange); // squared = skewed short
+  // Floor band: shaft can start anywhere across the full explorable range
+  const floorMin = Math.floor(r4 * 2000) - 1000;
+  const floorMax = floorMin + floorCount - 1;
+
+  const shaft = { x0, z0, x1, z1, floorMin, floorMax };
+  _shaftCache.set(key, shaft);
+  return shaft;
+}
+
+// Check all nearby zones to see if (tx,tz,floorN) is inside a shaft interior
+// "interior" = not the bottom floor and not the top floor's ceiling
+function getShaftAt(tx, tz, floorN) {
+  const G  = CFG.PILLAR_SPACING;
+  const ZS = ZONE_SIZE;
+  // Check the zone this cell belongs to (shaft origin may be in same zone)
+  const zx = Math.floor(tx / ZS);
+  const zz = Math.floor(tz / ZS);
+  // Check a 2×2 range of zones to catch shafts that overlap zone borders
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const s = getShaftForZone(zx + dx, zz + dz);
+      if (!s) continue;
+      if (tx >= s.x0 && tx < s.x1 && tz >= s.z0 && tz < s.z1) {
+        if (floorN >= s.floorMin && floorN <= s.floorMax) return s;
+      }
+    }
+  }
+  return null;
+}
+
+// Is this cell the very bottom floor of a shaft? (keep carpet)
+function isShaftBottom(tx, tz, floorN) {
+  const s = getShaftAt(tx, tz, floorN);
+  return s ? floorN === s.floorMin : false;
+}
+
+// Is this cell the very top floor of a shaft? (keep ceiling)
+function isShaftTop(tx, tz, floorN) {
+  const s = getShaftAt(tx, tz, floorN);
+  return s ? floorN === s.floorMax : false;
+}
+
+// Is this cell in the interior void (no floor, no ceiling, no walls)
+function isShaftInterior(tx, tz, floorN) {
+  const s = getShaftAt(tx, tz, floorN);
+  if (!s) return false;
+  return floorN > s.floorMin && floorN < s.floorMax;
+}
+
+// Is this XZ inside any shaft (any floor) — used to suppress walls
+function isShaftXZ(tx, tz, floorN) {
+  return getShaftAt(tx, tz, floorN) !== null;
+}
+
+// ─── WORLD STATE ───────────────────────────────────────────────────────────
+const world = {
+  masterSeed: Math.floor(Math.random() * 1e9),
+  // Per-floor caches keyed by "floorN:wallkey"
+  wallCache: new Map(),
+  doorCache: new Map(),
+  destroyedWalls: new Set(),
+  destroyedShaftWalls: new Set(), // keys: "shaft:x0:z0:face:fn:segStart"
+  // Height cache per floor level
+  floorHeightCache: new Map(),
+};
+
+// Derive a stable seed for a given floor level
+function floorSeed(floorN) {
+  // splitmix-style: mix masterSeed with floor index
+  let s = (world.masterSeed ^ (floorN * 2654435761)) | 0;
+  s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+  s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+  return (s >>> 0);
+}
+
+// Height of a given floor level (distance from its floor slab to its ceiling slab)
+function getFloorHeight(floorN) {
+  if (world.floorHeightCache.has(floorN)) return world.floorHeightCache.get(floorN);
+  const r = seededRandom(floorSeed(floorN) ^ 0x1234abcd);
+  const h = (CFG.FLOOR_H_MIN + r * (CFG.FLOOR_H_MAX - CFG.FLOOR_H_MIN)) | 0;
+  world.floorHeightCache.set(floorN, h);
+  return h;
+}
+
+// World-space Y of the BOTTOM of the slab of floor level N
+// (the face you see looking up from floor N-1)
+function floorSlabY(floorN) {
+  if (floorN === 0) return 0;
+  if (floorN > 0) {
+    let y = 0;
+    for (let i = 0; i < floorN; i++) y += getFloorHeight(i);
+    return y;
+  } else {
+    let y = 0;
+    for (let i = floorN; i < 0; i++) y -= getFloorHeight(i);
+    return y;
+  }
+}
+
+// Top of the slab = walking surface / wall base for floor N
+function slabTopY(floorN) {
+  return floorSlabY(floorN) + CFG.SLAB_THICKNESS;
+}
+
+// Bottom of the ceiling slab of floor N = bottom of slab of floor N+1
+function ceilBottomY(floorN) {
+  return floorSlabY(floorN + 1);
+}
+
+// Top of ceiling slab = walking surface of floor N+1 (rarely needed directly)
+function ceilTopY(floorN) {
+  return slabTopY(floorN + 1);
+}
+
+// ─── HOLE SYSTEM ───────────────────────────────────────────────────────────
+// A pit room has walkable strips over visible drops — it's NOT a full hole (floor slab present, just with gaps)
+// A clean hole is a full absence of floor slab — player falls through entirely
+function isPitRoomCell(tx, tz, floorN) {
+  const seed = floorSeed(floorN);
+  const pitHash = (tx * 2654435761 ^ tz * 2246822519 ^ seed * 3266489917) | 0;
+  return seededRandom(pitHash ^ 0xf00dcafe) < 0.03;
+}
+
+function isHoleCell(tx, tz, floorN) {
+  const seed = floorSeed(floorN);
+  const holeHash = (tx * 1234567 ^ tz * 7654321 ^ seed * 9876543) | 0;
+  return seededRandom(holeHash ^ 0xaabbccdd) < CFG.HOLE_CHANCE;
+}
+
+// Shaft lookup using exact world-space position instead of cell-snapped coords.
+// Prevents boundary misses that leave invisible collision floors inside void areas.
+function getShaftAtExact(px, pz, floorN) {
+  const ZS = ZONE_SIZE;
+  const zx = Math.floor(px / ZS);
+  const zz = Math.floor(pz / ZS);
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const s = getShaftForZone(zx + dx, zz + dz);
+      if (!s) continue;
+      if (px >= s.x0 && px < s.x1 && pz >= s.z0 && pz < s.z1) {
+        if (floorN >= s.floorMin && floorN <= s.floorMax) return s;
+      }
+    }
+  }
+  return null;
+}
+
+// Is the floor walkable at player XZ on floorN?
+// Player feet land on slabTopY(floorN)
+function hasFloorAt(px, pz, floorN) {
+  const G  = CFG.PILLAR_SPACING;
+  const tx = Math.floor(px / G) * G;
+  const tz = Math.floor(pz / G) * G;
+
+  // Use exact position for shaft check — cell-snapping causes boundary misses:
+  // if px lands on s.x1 exactly, tx==s.x1 fails tx<s.x1 and shaft is skipped,
+  // leaving invisible solid floor floating in open void.
+  const shaftHere = getShaftAtExact(px, pz, floorN);
+  if (shaftHere) {
+    if (floorN === shaftHere.floorMin) return true;   // bottom — carpet, always solid
+    return false;                                       // interior/top — open void
+  }
+  if (isHoleCell(tx, tz, floorN)) return false;
+  if (isPitRoomCell(tx, tz, floorN)) {
+    // Only the carpet strip edges are walkable — open sub-cells are real holes
+    const N   = CFG.PIT_SUBDIVS;
+    const SW  = CFG.PIT_STRIP_W;
+    const sub = G / N;
+    const lx  = ((px - tx) % sub + sub) % sub;
+    const lz  = ((pz - tz) % sub + sub) % sub;
+    const onStrip = lx < SW || lx > sub - SW || lz < SW || lz > sub - SW;
+    return onStrip;
+  }
+  return true;
+}
+
+// Which floor level is the player on / should land on?
+// ─── DEATH STATE ───────────────────────────────────────────────────────────
+let isDead = false;
+let deathFade = 0; // 0→1 fade to black as player falls
+
+function triggerDeath() {
+  if (isDead) return;
+  isDead = true;
+  if (!isMobile) document.exitPointerLock();
+  const ds = document.getElementById('death-screen');
+  ds.classList.add('visible');
+  ds.style.background = 'rgba(0,0,0,1)';
+  setTimeout(() => ds.classList.add('show-text'), 400);
+}
+
+function restartGame() {
+  isDead = false;
+  deathFade = 0;
+  const startY = _spawnY;
+  player.x = _spawnX; player.y = startY; player.z = _spawnZ;
+  player.xs = _spawnX; player.ys = startY; player.zs = _spawnZ;
+  player.velY = 0; player.jumpY = 0; player.isJumping = true;
+  player.yaw = 0; player.pitch = 0;
+  player.floorN = _spawnShaft ? _spawnShaft.floorMax : 0;
+  const ds = document.getElementById('death-screen');
+  ds.classList.remove('visible', 'show-text');
+  ds.style.background = 'rgba(0,0,0,0)';
+  if (isMobile) {
+    mouseLocked = true;
+  } else {
+    canvas.requestPointerLock();
+  }
+}
+
+function wallKey(x1,z1,x2,z2,floorN) {
+  const pts = [[x1,z1],[x2,z2]].sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  return `${floorN}:${pts[0][0]},${pts[0][1]},${pts[1][0]},${pts[1][1]}`;
+}
+
+function shaftWallKey(s, face, fn, segStart) {
+  return `shaft:${s.x0}:${s.z0}:${face}:${fn}:${segStart}`;
+}
+
+function isShaftWallDestroyed(s, face, fn, segStart) {
+  return world.destroyedShaftWalls.has(shaftWallKey(s, face, fn, segStart));
+}
+
+function hasWall(x1,z1,x2,z2,floorN,seed) {
+  const k = wallKey(x1,z1,x2,z2,floorN);
+  if (world.destroyedWalls.has(k)) return false;
+  if (world.wallCache.has(k)) return world.wallCache.get(k);
+  const isH = (z1 === z2), isV = (x1 === x2);
+  if (!isH && !isV) { world.wallCache.set(k, false); return false; }
+
+  const mx = (x1+x2)/2, mz = (z1+z2)/2;
+  const openness = getZoneOpenness(mx, mz, seed);
+  let result = true;
+  if (openness > 0) {
+    const wh = (mx * 3571 + mz * 2897 + seed * 9973) | 0;
+    const roll = seededRandom(wh ^ 0xabcd1234);
+    if (roll < openness) result = false;
+  }
+
+  world.wallCache.set(k, result);
+  return result;
+}
+
+function getDoorway(x1,z1,x2,z2,floorN,seed) {
+  const k = wallKey(x1,z1,x2,z2,floorN);
+  if (world.doorCache.has(k)) return world.doorCache.get(k);
+  const isH = (z1 === z2);
+  let ds;
+  if (isH) {
+    ds = (z1 * 3571 + ((x1+x2)/2|0) * 2897 + seed * 9973) | 0;
+  } else {
+    ds = (x1 * 3571 + ((z1+z2)/2|0) * 2897 + seed * 9973) | 0;
+  }
+  const roll = seededRandom(ds);
+  let type = null;
+  if (roll < 0.30) type = 'hallway';
+  else if (roll < 0.50) type = 'doorway';
+  else if (roll < 0.62) type = 'slit';
+  world.doorCache.set(k, type);
+  return type;
+}
+
+function getDoorwayStart(x1,z1,x2,z2,floorN,seed) {
+  const type = getDoorway(x1,z1,x2,z2,floorN,seed);
+  if (!type) return null;
+  const openW   = type === 'hallway' ? CFG.HALLWAY_W : type === 'slit' ? CFG.SLIT_W : CFG.DOORWAY_W;
+  const isV     = (x1 === x2);
+  const wallLen = isV ? Math.abs(z2-z1) : Math.abs(x2-x1);
+  const axisMin = isV ? Math.min(z1,z2) : Math.min(x1,x2);
+  const margin  = 20;
+  const travel  = wallLen - openW - margin * 2;
+  const isH     = (z1 === z2);
+  let ds2;
+  if (isH) {
+    ds2 = (z1 * 5381 + ((x1+x2)/2|0) * 1777 + seed * 6271) | 0;
+  } else {
+    ds2 = (x1 * 5381 + ((z1+z2)/2|0) * 1777 + seed * 6271) | 0;
+  }
+  const t      = seededRandom(ds2 ^ 0xcafe1234);
+  const oStart = axisMin + margin + t * Math.max(0, travel);
+  return { type, openW, oStart };
+}
+
+function isWallLifted(x1,z1,x2,z2,floorN,seed) {
+  if (getDoorway(x1,z1,x2,z2,floorN,seed)) return false;
+  const isH = (z1 === z2);
+  let h;
+  if (isH) {
+    h = (z1 * 7919 + ((x1+x2)/2|0) * 3541 + seed * 8191) | 0;
+  } else {
+    h = (x1 * 7919 + ((z1+z2)/2|0) * 3541 + seed * 8191) | 0;
+  }
+  return seededRandom(h ^ 0xbeef4321) < CFG.LIFT_CHANCE;
+}
+// Find the first shaft in zone (0,0) and spawn player inside it, mid-void
+function findSpawnShaft() {
+  const s = getShaftForZone(0, 0);
+  if (!s) return null;
+  return s;
+}
+
+const _spawnShaft = findSpawnShaft();
+// If a shaft exists near origin, spawn player inside its void near the top
+const _spawnX = _spawnShaft ? (_spawnShaft.x0 + _spawnShaft.x1) / 2 : 200;
+const _spawnZ = _spawnShaft ? (_spawnShaft.z0 + _spawnShaft.z1) / 2 : 200;
+// Spawn near top of shaft so player falls through several floors
+const _spawnFloor = _spawnShaft ? _spawnShaft.floorMax - 1 : 0;
+const _spawnY = _spawnShaft
+  ? slabTopY(_spawnShaft.floorMax) + CFG.CAMERA_H + 80  // just below top ceiling
+  : slabTopY(0) + CFG.CAMERA_H;
+
+const player = {
+  x: _spawnX, y: _spawnY, z: _spawnZ,
+  xs: _spawnX, ys: _spawnY, zs: _spawnZ,
+  yaw: 0, pitch: 0,
+  yaws: 0, pitchs: 0,
+  bobTime: 0,
+  shakeTime: Math.random() * 100,
+  isMoving: false,
+  isRunning: false,
+  isJumping: false,
+  isCrouching: false,
+  jumpsUsed: 0,    // 0 = on ground, 1 = first jump, 2 = double jump used
+  velY: 0,         // continuous vertical velocity (world units/sec, + = up)
+  jumpY: 0,        // kept for bob/camera compat — offset above current floor slab
+  landThud: false,
+  floorN: 0,       // current floor level integer
+};
+
+// ─── DEVICE DETECTION ──────────────────────────────────────────────────────
+const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+let isMobile = isTouchDevice; // can also be forced
+
+// ─── INPUT ─────────────────────────────────────────────────────────────────
+const keys = {};
+let mouseLocked = false;
+let mouseDX = 0, mouseDY = 0;
+
+document.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE') destroyWallInFront(); });
+document.addEventListener('keyup',   e => { keys[e.code] = false; });
+
+// ─── MOBILE TOUCH SYSTEM ───────────────────────────────────────────────────
+// One unified touch dispatcher on the canvas/document.
+// Left 45% = joystick. Right 45% = look. Buttons handle themselves.
+
+const joy = { active: false, id: -1, baseX: 0, baseY: 0, dx: 0, dy: 0 };
+const lookT = { active: false, id: -1, lastX: 0, lastY: 0 };
+
+// Raw look accumulator — applied each frame and cleared, no smoothing lag
+let touchLookDX = 0, touchLookDY = 0;
+
+function setupMobileControls() {
+  if (!isMobile) return;
+
+  document.getElementById('overlay-hint').textContent = 'TAP TO ENTER';
+
+  const JOY_RADIUS = 52;
+  const LOOK_SENS  = 0.008; // radians per pixel — tuned for thumb
+
+  function updateJoyVisual() {
+    // joystick visuals removed
+  }
+
+  // ── Single unified touch handler on the whole document ─────────────────
+  // Zones: left 45% = joystick, right 45% = look, center ok for look too
+  // Buttons use stopPropagation so they don't reach here.
+
+  document.addEventListener('touchstart', e => {
+    e.preventDefault();
+    initAudio(); // must be first — iOS requires AudioContext inside gesture call stack
+    if (!mouseLocked) { enterMobile(); return; }
+
+    for (const t of e.changedTouches) {
+      const xFrac = t.clientX / window.innerWidth;
+      // Left zone → joystick
+      if (xFrac < 0.45) {
+        if (joy.active) continue;
+        joy.active = true; joy.id = t.identifier;
+        joy.baseX = t.clientX; joy.baseY = t.clientY;
+        joy.dx = 0; joy.dy = 0;
+      } else {
+        // Right side → look (also center)
+        if (lookT.active) continue;
+        lookT.active = true; lookT.id = t.identifier;
+        lookT.lastX = t.clientX; lookT.lastY = t.clientY;
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      // Joystick move
+      if (t.identifier === joy.id) {
+        let dx = t.clientX - joy.baseX;
+        let dy = t.clientY - joy.baseY;
+        const mag = Math.sqrt(dx*dx + dy*dy);
+        if (mag > JOY_RADIUS) { dx = dx/mag*JOY_RADIUS; dy = dy/mag*JOY_RADIUS; }
+        joy.dx = dx; joy.dy = dy;
+        updateJoyVisual();
+      }
+      // Look move
+      if (t.identifier === lookT.id) {
+        touchLookDX += (t.clientX - lookT.lastX);
+        touchLookDY += (t.clientY - lookT.lastY);
+        lookT.lastX = t.clientX; lookT.lastY = t.clientY;
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchend', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === joy.id) {
+        joy.active = false; joy.id = -1; joy.dx = 0; joy.dy = 0;
+        // Clear movement keys immediately on lift
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+      }
+      if (t.identifier === lookT.id) {
+        lookT.active = false; lookT.id = -1;
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('touchcancel', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === joy.id) {
+        joy.active = false; joy.id = -1; joy.dx = 0; joy.dy = 0;
+        keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+      }
+      if (t.identifier === lookT.id) {
+        lookT.active = false; lookT.id = -1;
+      }
+    }
+  }, { passive: false });
+
+}
+
+// Apply joystick to directional keys each frame — smooth analog mapping
+function applyJoystickToKeys() {
+  if (!isMobile) return;
+  if (!joy.active || (joy.dx === 0 && joy.dy === 0)) {
+    keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    return;
+  }
+  const JOY_DEAD = 10;
+  const mag = Math.sqrt(joy.dx*joy.dx + joy.dy*joy.dy);
+  if (mag < JOY_DEAD) {
+    keys['KeyW'] = keys['KeyS'] = keys['KeyA'] = keys['KeyD'] = false;
+    return;
+  }
+  const nx = joy.dx / mag, ny = joy.dy / mag;
+  keys['KeyW'] = ny < -0.25;
+  keys['KeyS'] = ny >  0.25;
+  keys['KeyD'] = nx >  0.25;
+  keys['KeyA'] = nx < -0.25;
+}
+
+// ─── ENTER GAME ────────────────────────────────────────────────────────────
+function enterMobile() {
+  initAudio();
+  mouseLocked = true;
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('menu-btn').classList.remove('visible');
+}
+
+function enterDesktop() {
+  initAudio();
+  canvas.requestPointerLock();
+}
+
+document.addEventListener('mousemove', e => {
+  if (!mouseLocked) return;
+  mouseDX += e.movementX;
+  mouseDY += e.movementY;
+});
+
+// ── Zoom (scroll wheel) ────────────────────────────────────────────────────
+let zoomFOV     = CFG.FOV_DEG;
+let zoomTarget  = CFG.FOV_DEG;
+const ZOOM_MIN  = 8;
+const ZOOM_MAX  = 100;
+const ZOOM_STEP = 6;
+
+document.addEventListener('wheel', e => {
+  if (!mouseLocked) return;
+  zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomTarget + Math.sign(e.deltaY) * ZOOM_STEP));
+}, { passive: true });
+
+document.getElementById('overlay').addEventListener('click', () => {
+  if (isMobile) enterMobile(); else enterDesktop();
+});
+document.getElementById('overlay').addEventListener('touchstart', e => {
+  e.preventDefault(); enterMobile();
+}, { passive: false });
+
+canvas.addEventListener('click', () => {
+  if (!isMobile && !mouseLocked) enterDesktop();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  if (isMobile) return; // mobile doesn't use pointer lock
+  mouseLocked = document.pointerLockElement === canvas;
+  if (mouseLocked && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  document.getElementById('overlay').style.display = mouseLocked ? 'none' : 'flex';
+  document.getElementById('menu-btn').classList.toggle('visible', !mouseLocked);
+});
+
+function destroyWallInFront() {
+  const G = CFG.PILLAR_SPACING;
+  const fn = player.floorN;
+  const seed = floorSeed(fn);
+  const ox = player.x, oz = player.z;
+  const dx = Math.sin(player.yaw), dz = Math.cos(player.yaw);
+  const maxDist = G * 1.5;
+  const step = 8;
+
+  let bestKey = null;
+  let bestDist = maxDist;
+  let bestIsShaft = false;
+  let bestShaftData = null; // {s, face, segStart}
+
+  for (let d = step; d <= maxDist; d += step) {
+    const wx = ox + dx * d;
+    const wz = oz + dz * d;
+    const gx = Math.floor(wx / G) * G;
+    const gz = Math.floor(wz / G) * G;
+
+    // ── Regular grid walls ───────────────────────────────────────────────
+    const walls = [
+      [gx, gz, gx + G, gz],
+      [gx, gz + G, gx + G, gz + G],
+      [gx, gz, gx, gz + G],
+      [gx + G, gz, gx + G, gz + G],
+    ];
+
+    for (const [x1, z1, x2, z2] of walls) {
+      const k = wallKey(x1, z1, x2, z2, fn);
+      if (world.destroyedWalls.has(k)) continue;
+      if (!hasWall(x1, z1, x2, z2, fn, seed)) continue;
+
+      const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+      const dist = Math.sqrt((mx - ox) ** 2 + (mz - oz) ** 2);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestKey = k;
+        bestIsShaft = false;
+        bestShaftData = null;
+      }
+    }
+
+    // ── Shaft border walls ───────────────────────────────────────────────
+    const ZS = ZONE_SIZE;
+    const zxP = Math.floor(wx / ZS), zzP = Math.floor(wz / ZS);
+    for (let ddz = -1; ddz <= 1; ddz++) {
+      for (let ddx = -1; ddx <= 1; ddx++) {
+        const s = getShaftForZone(zxP + ddx, zzP + ddz);
+        if (!s) continue;
+        if (fn < s.floorMin || fn > s.floorMax) continue;
+
+        // Check each face: is the ray point near this face?
+        const ht = CFG.WALL_THICKNESS / 2 + 20; // hit tolerance
+
+        // North face (z = s.z0, x varies)
+        if (Math.abs(wz - s.z0) < ht && wx >= s.x0 && wx < s.x1) {
+          const seg = Math.floor(wx / G) * G;
+          if (!isShaftWallDestroyed(s, 'N', fn, seg)) {
+            const dist = Math.sqrt((wx - ox) ** 2 + (s.z0 - oz) ** 2);
+            if (dist < bestDist) { bestDist = dist; bestKey = shaftWallKey(s,'N',fn,seg); bestIsShaft = true; bestShaftData = {s, face:'N', segStart:seg}; }
+          }
+        }
+        // South face (z = s.z1)
+        if (Math.abs(wz - s.z1) < ht && wx >= s.x0 && wx < s.x1) {
+          const seg = Math.floor(wx / G) * G;
+          if (!isShaftWallDestroyed(s, 'S', fn, seg)) {
+            const dist = Math.sqrt((wx - ox) ** 2 + (s.z1 - oz) ** 2);
+            if (dist < bestDist) { bestDist = dist; bestKey = shaftWallKey(s,'S',fn,seg); bestIsShaft = true; bestShaftData = {s, face:'S', segStart:seg}; }
+          }
+        }
+        // West face (x = s.x0)
+        if (Math.abs(wx - s.x0) < ht && wz >= s.z0 && wz < s.z1) {
+          const seg = Math.floor(wz / G) * G;
+          if (!isShaftWallDestroyed(s, 'W', fn, seg)) {
+            const dist = Math.sqrt((s.x0 - ox) ** 2 + (wz - oz) ** 2);
+            if (dist < bestDist) { bestDist = dist; bestKey = shaftWallKey(s,'W',fn,seg); bestIsShaft = true; bestShaftData = {s, face:'W', segStart:seg}; }
+          }
+        }
+        // East face (x = s.x1)
+        if (Math.abs(wx - s.x1) < ht && wz >= s.z0 && wz < s.z1) {
+          const seg = Math.floor(wz / G) * G;
+          if (!isShaftWallDestroyed(s, 'E', fn, seg)) {
+            const dist = Math.sqrt((s.x1 - ox) ** 2 + (wz - oz) ** 2);
+            if (dist < bestDist) { bestDist = dist; bestKey = shaftWallKey(s,'E',fn,seg); bestIsShaft = true; bestShaftData = {s, face:'E', segStart:seg}; }
+          }
+        }
+      }
+    }
+
+    if (bestKey) break;
+  }
+
+  if (bestKey) {
+    if (bestIsShaft && bestShaftData) {
+      const { s, face, segStart } = bestShaftData;
+      world.destroyedShaftWalls.add(shaftWallKey(s, face, fn, segStart));
+    } else {
+      world.destroyedWalls.add(bestKey);
+      world.wallCache.delete(bestKey);
+    }
+  }
+}
+// ─── CAMERA MATH ───────────────────────────────────────────────────────────
+// Convention: yaw=0 → looking down +Z. Increasing yaw rotates left (CCW from above).
+// Forward = [sin(yaw), 0, cos(yaw)],  Right = [cos(yaw), 0, -sin(yaw)]
+function worldToCamera(wx,wy,wz) {
+  let x = wx - player.xs;
+  let y = wy - player.ys;
+  let z = wz - player.zs;
+  const yaw = -player.yaws;  // negate: camera rotates opposite to player facing
+  // Project onto right and forward axes
+  const x1 =  x*Math.cos(yaw) + z*Math.sin(yaw);
+  const z1 = -x*Math.sin(yaw) + z*Math.cos(yaw);
+  // Pitch
+  const cp = Math.cos(player.pitchs), sp = Math.sin(player.pitchs);
+  const y2 = y*cp - z1*sp;
+  const z2 = y*sp + z1*cp;
+  return [x1, y2, z2];
+}
+
+function projectCamera(cx,cy,cz) {
+  if (cz <= CFG.NEAR) return null;
+  const aspect = H / W;
+  const focal  = (W * 0.5) / Math.tan((zoomFOV * 0.5) * Math.PI / 180);
+  const scale  = focal / cz;
+  const sx = W * 0.5 + cx * scale;
+  const sy = H * 0.5 - cy * scale * aspect;
+  if (!isFinite(sx) || !isFinite(sy)) return null;
+  return [sx, sy];
+}
+
+function clipPolyNear(poly) {
+  if (!poly || poly.length < 3) return [];
+  const NEAR = CFG.NEAR;
+  const inside = p => p[2] >= NEAR;
+  function intersect(a,b) {
+    const dz = b[2] - a[2];
+    if (Math.abs(dz) < 1e-7) return null;
+    const t = Math.max(0, Math.min(1, (NEAR - a[2]) / dz));
+    return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, NEAR+0.001];
+  }
+  const out = [];
+  let prev = poly[poly.length-1], prevIn = inside(prev);
+  for (const cur of poly) {
+    const curIn = inside(cur);
+    if (curIn && prevIn)        { out.push(cur); }
+    else if (curIn && !prevIn)  { const i=intersect(prev,cur); if(i) out.push(i); out.push(cur); }
+    else if (!curIn && prevIn)  { const i=intersect(prev,cur); if(i) out.push(i); }
+    prev = cur; prevIn = curIn;
+  }
+  return out.length >= 3 ? out : [];
+}
+
+// ─── FOG + NOISE ───────────────────────────────────────────────────────────
+function applyFog(r,g,b, dist) {
+  if (dist < 400) return [r,g,b];
+  const t = Math.min(1, (dist-400) / (CFG.RENDER_DIST - 400));
+  const fr=CFG.BG_COL[0], fg=CFG.BG_COL[1], fb=CFG.BG_COL[2];
+  return [
+    (r + (fr-r)*t)|0,
+    (g + (fg-g)*t)|0,
+    (b + (fb-b)*t)|0,
+  ];
+}
+
+function noiseColor(r,g,b, wx,wz) {
+  const n = seededRandom(((wx*73856093)^(wz*19349663)) | 0);
+  const v = (n * 26 - 13) | 0;
+  return [
+    Math.max(0,Math.min(255,r+v)),
+    Math.max(0,Math.min(255,g+v)),
+    Math.max(0,Math.min(255,b+v)),
+  ];
+}
+
+function rgb(r,g,b) { return `rgb(${r},${g},${b})`; }
+
+// ─── POLYGON DRAW ──────────────────────────────────────────────────────────
+// All polys are queued here, sorted by world-space distance, then drawn once.
+const _pq = [];
+
+function drawWorldPoly(worldPts, color, edgeColor, aoFactor=1.0) {
+  // Compute world-space squared distance from camera to centroid (rotation-independent)
+  let ax=0,ay=0,az=0;
+  for (const [x,y,z] of worldPts) { ax+=x; ay+=y; az+=z; }
+  const n = worldPts.length;
+  ax/=n; ay/=n; az/=n;
+  const dx=ax-player.xs, dy=ay-player.ys, dz=az-player.zs;
+  _pq.push({ d: dx*dx+dy*dy+dz*dz, worldPts, color, edgeColor, aoFactor });
+}
+
+function _flushPolys() {
+  _pq.sort((a,b) => b.d - a.d);
+  for (const { worldPts, color, edgeColor, aoFactor } of _pq) {
+    _drawPolyNow(worldPts, color, edgeColor, aoFactor);
+  }
+  _pq.length = 0;
+}
+
+function _drawPolyNow(worldPts, color, edgeColor, aoFactor) {
+  const camPts = worldPts.map(([x,y,z]) => worldToCamera(x,y,z));
+  if (camPts.every(p => p[2] < CFG.NEAR)) return;
+
+  let ax=0,ay=0,az=0;
+  for (const p of worldPts) { ax+=p[0]; ay+=p[1]; az+=p[2]; }
+  ax/=worldPts.length; ay/=worldPts.length; az/=worldPts.length;
+
+  const camAvg = worldToCamera(ax,ay,az);
+  const dist = Math.sqrt(camAvg[0]**2+camAvg[2]**2);  // XZ only — ignore Y so tall walls don't over-fog
+  if (dist > CFG.RENDER_DIST * 1.5) return;
+
+  let [r,g,b] = color;
+  [r,g,b] = noiseColor(r,g,b, ax,az);
+  r=(r*aoFactor)|0; g=(g*aoFactor)|0; b=(b*aoFactor)|0;
+  [r,g,b] = applyFog(r,g,b,dist);
+
+  const clipped = clipPolyNear(camPts);
+  if (clipped.length < 3) return;
+
+  const screen = clipped.map(([cx,cy,cz]) => projectCamera(cx,cy,cz));
+  if (screen.some(p => p === null)) return;
+
+  const minX = Math.min(...screen.map(p=>p[0]));
+  const maxX = Math.max(...screen.map(p=>p[0]));
+  const minY = Math.min(...screen.map(p=>p[1]));
+  const maxY = Math.max(...screen.map(p=>p[1]));
+  if (maxX < -400 || minX > W+400 || maxY < -400 || minY > H+400) return;
+  if ((maxX-minX) < 0.5 && (maxY-minY) < 0.5) return;
+
+  ctx.beginPath();
+  ctx.moveTo(screen[0][0], screen[0][1]);
+  for (let i=1; i<screen.length; i++) ctx.lineTo(screen[i][0], screen[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = rgb(r,g,b);
+  ctx.fill();
+
+  if (edgeColor) {
+    let [er,eg,eb] = edgeColor;
+    [er,eg,eb] = applyFog(er,eg,eb,dist);
+    ctx.strokeStyle = rgb(er,eg,eb);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+// ─── RENDER QUEUE ──────────────────────────────────────────────────────────
+function buildRenderQueue() {
+  const G  = CFG.PILLAR_SPACING;
+  const RD = CFG.RENDER_DIST;
+  const px = player.xs, pz = player.zs;
+  const RF = CFG.RENDER_FLOORS;
+
+  for (let fOff = -RF; fOff <= RF; fOff++) {
+    const fn     = player.floorN + fOff;
+    const seed   = floorSeed(fn);
+    const walkY  = slabTopY(fn);       // carpet / walking surface top
+    const ceilBY = ceilBottomY(fn);    // concrete ceiling underside
+    const wallH  = ceilBY - walkY;
+    const LIFT_H = Math.min(CFG.LIFT_H, wallH * 0.12);
+
+    const startX = Math.floor((px - RD) / G) * G;
+    const endX   = Math.floor((px + RD) / G) * G;
+    const startZ = Math.floor((pz - RD) / G) * G;
+    const endZ   = Math.floor((pz + RD) / G) * G;
+
+    for (let tx = startX; tx < endX; tx += G) {
+      for (let tz = startZ; tz < endZ; tz += G) {
+        const cx = tx + G/2, cz = tz + G/2;
+        if (Math.hypot(cx-px, cz-pz) > RD + G) continue;
+
+        // ── Shaft geometry rules ──────────────────────────────────────────
+        const shaftInterior = isShaftInterior(tx, tz, fn);
+        const shaftBottom   = isShaftBottom(tx, tz, fn);
+        const shaftTop      = isShaftTop(tx, tz, fn);
+        const inShaft       = shaftInterior || shaftBottom || shaftTop;
+        // Interior floors: no floor slab, no ceiling — pure void
+        // Bottom floor: keep carpet, suppress ceiling (void above)
+        // Top floor: keep ceiling, suppress floor (void below it)
+
+        const hole      = isHoleCell(tx, tz, fn)  || shaftInterior || shaftTop;
+        const isPitRoom = !hole && isPitRoomCell(tx, tz, fn) && !inShaft;
+        const holeAbove = isHoleCell(tx, tz, fn+1) || isShaftInterior(tx, tz, fn+1) || isShaftBottom(tx, tz, fn+1);
+        const pitAbove  = isPitRoomCell(tx, tz, fn+1) && !isShaftXZ(tx, tz, fn+1);
+        const openAbove = holeAbove || pitAbove;
+
+        // ── Ceiling underside face ────────────────────────────────────────
+        if (!openAbove && !shaftBottom && !shaftInterior) {
+          // Solid floor above — full concrete ceiling
+          drawWorldPoly([[tx,ceilBY,tz],[tx+G,ceilBY,tz],[tx+G,ceilBY,tz+G],[tx,ceilBY,tz+G]], CFG.CEILING_COL, null);
+        } else if (pitAbove && !holeAbove) {
+          // Pit room above — draw concrete ceiling only under the strip portions
+          const N   = CFG.PIT_SUBDIVS;
+          const SW  = CFG.PIT_STRIP_W;
+          const sub = G / N;
+          for (let si = 0; si < N; si++) {
+            for (let sj = 0; sj < N; sj++) {
+              const ox = tx+si*sub, oz = tz+sj*sub;
+              const ex = ox+sub,    ez = oz+sub;
+              const px0=ox+SW, px1=ex-SW, pz0=oz+SW, pz1=ez-SW;
+              if (px1<=px0||pz1<=pz0) {
+                drawWorldPoly([[ox,ceilBY,oz],[ex,ceilBY,oz],[ex,ceilBY,ez],[ox,ceilBY,ez]], CFG.CEILING_COL, null);
+                continue;
+              }
+              drawWorldPoly([[ox,ceilBY,oz],[ex,ceilBY,oz],[ex,ceilBY,pz0],[ox,ceilBY,pz0]], CFG.CEILING_COL, null);
+              drawWorldPoly([[ox,ceilBY,pz1],[ex,ceilBY,pz1],[ex,ceilBY,ez],[ox,ceilBY,ez]], CFG.CEILING_COL, null);
+              drawWorldPoly([[ox,ceilBY,pz0],[px0,ceilBY,pz0],[px0,ceilBY,pz1],[ox,ceilBY,pz1]], CFG.CEILING_COL, null);
+              drawWorldPoly([[px1,ceilBY,pz0],[ex,ceilBY,pz0],[ex,ceilBY,pz1],[px1,ceilBY,pz1]], CFG.CEILING_COL, null);
+            }
+          }
+        }
+        // holeAbove / shaftBottom: no ceiling — open void above
+
+        // ── Floor carpet / pit top face ───────────────────────────────────
+        if (!hole) {
+          if (isPitRoom) {
+            const N   = CFG.PIT_SUBDIVS;
+            const SW  = CFG.PIT_STRIP_W;
+            const sub = G / N;
+            const yc  = CFG.CARPET_COL;
+            for (let si = 0; si < N; si++) {
+              for (let sj = 0; sj < N; sj++) {
+                const ox = tx+si*sub, oz = tz+sj*sub;
+                const ex = ox+sub,    ez = oz+sub;
+                const px0=ox+SW, px1=ex-SW, pz0=oz+SW, pz1=ez-SW;
+                if (px1<=px0||pz1<=pz0) {
+                  drawWorldPoly([[ox,walkY,oz],[ex,walkY,oz],[ex,walkY,ez],[ox,walkY,ez]], yc, null);
+                  continue;
+                }
+                drawWorldPoly([[ox,walkY,oz],[ex,walkY,oz],[ex,walkY,pz0],[ox,walkY,pz0]], yc, null);
+                drawWorldPoly([[ox,walkY,pz1],[ex,walkY,pz1],[ex,walkY,ez],[ox,walkY,ez]], yc, null);
+                drawWorldPoly([[ox,walkY,pz0],[px0,walkY,pz0],[px0,walkY,pz1],[ox,walkY,pz1]], yc, null);
+                drawWorldPoly([[px1,walkY,pz0],[ex,walkY,pz0],[ex,walkY,pz1],[px1,walkY,pz1]], yc, null);
+              }
+            }
+          } else {
+            drawWorldPoly([[tx,walkY,tz],[tx+G,walkY,tz],[tx+G,walkY,tz+G],[tx,walkY,tz+G]], CFG.CARPET_COL, null);
+          }
+        }
+        // shaft interior / top: open drop — floors below render through naturally
+      }
+    }
+
+    // ── Walls span walkY → ceilBY ─────────────────────────────────────────
+    for (let wx = startX; wx <= endX; wx += G) {
+      for (let wz = startZ; wz <= endZ; wz += G) {
+        // Suppress walls where EITHER cell touching the wall is inside the shaft volume
+        const inShaftH = isShaftXZ(wx,wz,fn) || isShaftXZ(wx+G,wz,fn);
+        const inShaftV = isShaftXZ(wx,wz,fn) || isShaftXZ(wx,wz+G,fn);
+
+        if (Math.hypot(wx+G/2-px, wz-pz) <= RD && hasWall(wx,wz,wx+G,wz,fn,seed) && !inShaftH)
+          drawWall(wx,wz,wx+G,wz, walkY, ceilBY, fn, seed, LIFT_H);
+        if (Math.hypot(wx-px, wz+G/2-pz) <= RD && hasWall(wx,wz,wx,wz+G,fn,seed) && !inShaftV)
+          drawWall(wx,wz,wx,wz+G, walkY, ceilBY, fn, seed, LIFT_H);
+      }
+    }
+  }
+
+  // Shaft border walls — added to same _pq as all other geometry so painter sort works
+  drawShaftBorderWalls();
+}
+
+// Returns doorway cut info for a shaft border wall face, or null
+// face: 'N','S','W','E'  fn: floor level
+function getShaftDoorway(s, face, fn) {
+  const key = `shaft:${s.x0}:${s.z0}:${face}:${fn}`;
+  if (_shaftCache.has(key)) return _shaftCache.get(key);
+
+  const h = (s.x0 * 1234567 ^ s.z0 * 7654321 ^ fn * 2654435 ^ face.charCodeAt(0) * 9876543) | 0;
+  const roll = seededRandom(h ^ 0xd00d0001);
+  if (roll > 0.35) { _shaftCache.set(key, null); return null; } // ~35% chance per face per floor
+
+  const G   = CFG.PILLAR_SPACING;
+  const openW = CFG.DOORWAY_W;
+  // Wall length depends on face orientation
+  const wallLen = (face === 'N' || face === 'S') ? (s.x1 - s.x0) : (s.z1 - s.z0);
+  const margin  = 20;
+  const travel  = wallLen - openW - margin * 2;
+  if (travel <= 0) { _shaftCache.set(key, null); return null; }
+
+  const t      = seededRandom(h ^ 0xd00d0002);
+  const oStart = ((face === 'N' || face === 'S') ? s.x0 : s.z0) + margin + t * travel;
+  const result = { openW, oStart, oEnd: oStart + openW };
+  _shaftCache.set(key, result);
+  return result;
+}
+
+// Draw the 4 thick yellow walls around every visible shaft — split per floor level
+function drawShaftBorderWalls() {
+  const G   = CFG.PILLAR_SPACING;
+  const RD  = CFG.RENDER_DIST;
+  const px  = player.xs, pz = player.zs;
+  const ZS  = ZONE_SIZE;
+  const RF  = CFG.RENDER_FLOORS;
+
+  const z0x = Math.floor((px - RD) / ZS) - 1;
+  const z1x = Math.floor((px + RD) / ZS) + 1;
+  const z0z = Math.floor((pz - RD) / ZS) - 1;
+  const z1z = Math.floor((pz + RD) / ZS) + 1;
+
+  for (let zx = z0x; zx <= z1x; zx++) {
+    for (let zz = z0z; zz <= z1z; zz++) {
+      const s = getShaftForZone(zx, zz);
+      if (!s) continue;
+
+      const cx = (s.x0 + s.x1) / 2, cz = (s.z0 + s.z1) / 2;
+      if (Math.hypot(cx - px, cz - pz) > RD + s.x1 - s.x0) continue;
+
+      // Draw one wall segment per floor level per face — same Y range as regular walls
+      for (let fn = s.floorMin; fn <= s.floorMax; fn++) {
+        if (Math.abs(fn - player.floorN) > RF + 1) continue;
+        const walkY  = slabTopY(fn);
+        const ceilBY = ceilBottomY(fn);
+        const lintelY = walkY + (ceilBY - walkY) * 0.85;
+
+        _currentShaft = s;
+        _currentFn    = fn;
+
+        // Draw horizontal face (z fixed, x varies) in G-sized chunks
+        const drawFaceH = (az, face) => {
+          _currentFace = face;
+          const dw = getShaftDoorway(s, face, fn);
+          for (let wx = s.x0; wx < s.x1; wx += G) {
+            if (isShaftWallDestroyed(s, face, fn, wx)) continue;
+            const wx2 = Math.min(wx + G, s.x1);
+            drawShaftSegment(wx, az, wx2, az, ceilBY, walkY, lintelY, dw, true, wx);
+          }
+        };
+
+        // Draw vertical face (x fixed, z varies) in G-sized chunks
+        const drawFaceV = (ax, face) => {
+          _currentFace = face;
+          const dw = getShaftDoorway(s, face, fn);
+          for (let wz = s.z0; wz < s.z1; wz += G) {
+            if (isShaftWallDestroyed(s, face, fn, wz)) continue;
+            const wz2 = Math.min(wz + G, s.z1);
+            drawShaftSegment(ax, wz, ax, wz2, ceilBY, walkY, lintelY, dw, false, wz);
+          }
+        };
+
+        drawFaceH(s.z0, 'N');
+        drawFaceH(s.z1, 'S');
+        drawFaceV(s.x0, 'W');
+        drawFaceV(s.x1, 'E');
+      }
+    }
+  }
+}
+
+// Returns window cuts for a single G-wide shaft wall segment, or []
+// Windows are narrower than doorways, positioned upper half, no collision gap
+function getShaftWindows(s, face, fn, segStart) {
+  const key = `win:${s.x0}:${s.z0}:${face}:${fn}:${segStart}`;
+  if (_shaftCache.has(key)) return _shaftCache.get(key);
+
+  const h = (s.x0 * 8675309 ^ s.z0 * 3141592 ^ fn * 2718281 ^ segStart * 1234567 ^ face.charCodeAt(0) * 9999991) | 0;
+  const typeRoll = seededRandom(h ^ 0x77777777);
+
+  let windows = [];
+  const G = CFG.PILLAR_SPACING;
+  const wallH   = ceilBottomY(fn) - slabTopY(fn);
+  const sillY   = slabTopY(fn)  + wallH * 0.45;  // window bottom
+  const winTopY = slabTopY(fn)  + wallH * 0.80;  // window top
+  const margin  = 30;
+  const minPillar = 25; // minimum solid wall between windows
+
+  if (typeRoll < 0.30) {
+    // No windows — solid segment
+  } else if (typeRoll < 0.55) {
+    // Single centered window
+    const winW = 50 + seededRandom(h ^ 0x11111111) * 80;
+    const center = segStart + G / 2;
+    windows.push({ wStart: center - winW/2, wEnd: center + winW/2, sillY, winTopY });
+  } else if (typeRoll < 0.75) {
+    // Two windows
+    const winW = 40 + seededRandom(h ^ 0x22222222) * 50;
+    const gap  = G / 3;
+    windows.push({ wStart: segStart + margin,       wEnd: segStart + margin + winW,       sillY, winTopY });
+    windows.push({ wStart: segStart + gap + margin,  wEnd: segStart + gap + margin + winW, sillY, winTopY });
+  } else if (typeRoll < 0.88) {
+    // Three windows — thin pillars between
+    const winW = 30 + seededRandom(h ^ 0x33333333) * 35;
+    const spacing = (G - margin*2 - winW*3) / 2;
+    for (let i = 0; i < 3; i++) {
+      const ws = segStart + margin + i * (winW + Math.max(minPillar, spacing));
+      windows.push({ wStart: ws, wEnd: ws + winW, sillY, winTopY });
+    }
+  } else {
+    // Almost all windows — thin pillars only
+    const pillarW = 18;
+    const numPillars = 2;
+    const openStart = segStart + pillarW;
+    const openEnd   = segStart + G - pillarW;
+    // One big window with tiny side pillars
+    windows.push({ wStart: openStart, wEnd: openEnd, sillY, winTopY });
+  }
+
+  // Clamp all windows to segment bounds
+  windows = windows
+    .map(w => ({ ...w, wStart: Math.max(w.wStart, segStart + 8), wEnd: Math.min(w.wEnd, segStart + G - 8) }))
+    .filter(w => w.wEnd - w.wStart > 10);
+
+  _shaftCache.set(key, windows);
+  return windows;
+}
+
+// Draw a wall segment with both a doorway cut (full height gap) and windows (partial height gaps)
+function drawShaftSegment(x1, z1, x2, z2, ceilBY, walkY, lintelY, dw, isHoriz, segStart) {
+  const wins = getShaftWindows(
+    _currentShaft, _currentFace, _currentFn, segStart
+  );
+
+  // If no doorway and no windows, just draw full segment
+  if (!dw && wins.length === 0) {
+    drawWallSegment(x1, z1, x2, z2, ceilBY, walkY);
+    return;
+  }
+
+  // Build list of axis-aligned "cuts" — each is {start, end, topY, botY}
+  // Doorway cut: full height from walkY to lintelY
+  // Window cuts: partial height from sillY to winTopY
+  const cuts = [];
+  const axMin = isHoriz ? Math.min(x1,x2) : Math.min(z1,z2);
+  const axMax = isHoriz ? Math.max(x1,x2) : Math.max(z1,z2);
+
+  if (dw) {
+    const cs = Math.max(dw.oStart, axMin), ce = Math.min(dw.oEnd, axMax);
+    if (ce > cs) cuts.push({ start: cs, end: ce, topY: lintelY, botY: walkY, isDoor: true });
+  }
+  for (const w of wins) {
+    const cs = Math.max(w.wStart, axMin), ce = Math.min(w.wEnd, axMax);
+    if (ce > cs) cuts.push({ start: cs, end: ce, topY: w.winTopY, botY: w.sillY, isDoor: false });
+  }
+
+  if (cuts.length === 0) {
+    drawWallSegment(x1, z1, x2, z2, ceilBY, walkY);
+    return;
+  }
+
+  // Sort cuts by start position
+  cuts.sort((a, b) => a.start - b.start);
+
+  // Walk along the axis, drawing solid wall sections and cut sections
+  let pos = axMin;
+  for (const cut of cuts) {
+    if (cut.start > pos) {
+      // Solid wall to left of cut
+      _drawShaftSeg(x1, z1, x2, z2, isHoriz, pos, cut.start, ceilBY, walkY);
+    }
+    // Above cut (lintel/top section)
+    if (ceilBY > cut.topY) {
+      _drawShaftSeg(x1, z1, x2, z2, isHoriz, cut.start, cut.end, ceilBY, cut.topY);
+    }
+    // Below cut (sill section) — only for windows, doors go to floor
+    if (cut.botY > walkY) {
+      _drawShaftSeg(x1, z1, x2, z2, isHoriz, cut.start, cut.end, cut.botY, walkY);
+    }
+    pos = cut.end;
+  }
+  // Remaining solid wall to the right
+  if (pos < axMax) {
+    _drawShaftSeg(x1, z1, x2, z2, isHoriz, pos, axMax, ceilBY, walkY);
+  }
+}
+
+// Draw a sub-span of a wall segment (helper for drawShaftSegment)
+function _drawShaftSeg(x1, z1, x2, z2, isHoriz, spanStart, spanEnd, topY, botY) {
+  if (spanEnd <= spanStart || topY <= botY) return;
+  if (isHoriz) {
+    drawWallSegment(spanStart, z1, spanEnd, z2, topY, botY);
+  } else {
+    drawWallSegment(x1, spanStart, x2, spanEnd, topY, botY);
+  }
+}
+
+// Temps used by drawShaftSegment to pass shaft context without extra args
+let _currentShaft = null, _currentFace = '', _currentFn = 0;
+
+
+function drawWallSegment(x1,z1,x2,z2, topY, floorY) {
+  const ht = CFG.WALL_THICKNESS / 2;
+  const wc = CFG.WALL_COL;
+  const ec = CFG.EDGE_COL;
+  const bc = CFG.BASE_COL;
+  const sc = [230, 210, 70];
+  const BH = 8;
+
+  const isV = (x1 === x2);
+
+  if (isV) {
+    const x = x1;
+    drawWorldPoly([[x-ht,topY,z1],[x-ht,topY,z2],[x-ht,floorY+BH,z2],[x-ht,floorY+BH,z1]], wc, ec, getAO(topY,floorY));
+    drawWorldPoly([[x-ht,floorY+BH,z1],[x-ht,floorY+BH,z2],[x-ht,floorY,z2],[x-ht,floorY,z1]], bc, null, 0.7);
+    drawWorldPoly([[x+ht,topY,z2],[x+ht,topY,z1],[x+ht,floorY+BH,z1],[x+ht,floorY+BH,z2]], wc, ec, getAO(topY,floorY));
+    drawWorldPoly([[x+ht,floorY+BH,z2],[x+ht,floorY+BH,z1],[x+ht,floorY,z1],[x+ht,floorY,z2]], bc, null, 0.7);
+    drawWorldPoly([[x-ht,topY,z1],[x+ht,topY,z1],[x+ht,floorY,z1],[x-ht,floorY,z1]], sc,ec);
+    drawWorldPoly([[x+ht,topY,z2],[x-ht,topY,z2],[x-ht,floorY,z2],[x+ht,floorY,z2]], sc,ec);
+  } else {
+    const z = z1;
+    drawWorldPoly([[x1,topY,z-ht],[x2,topY,z-ht],[x2,floorY+BH,z-ht],[x1,floorY+BH,z-ht]], wc, ec, getAO(topY,floorY));
+    drawWorldPoly([[x1,floorY+BH,z-ht],[x2,floorY+BH,z-ht],[x2,floorY,z-ht],[x1,floorY,z-ht]], bc, null, 0.7);
+    drawWorldPoly([[x2,topY,z+ht],[x1,topY,z+ht],[x1,floorY+BH,z+ht],[x2,floorY+BH,z+ht]], wc, ec, getAO(topY,floorY));
+    drawWorldPoly([[x2,floorY+BH,z+ht],[x1,floorY+BH,z+ht],[x1,floorY,z+ht],[x2,floorY,z+ht]], bc, null, 0.7);
+    drawWorldPoly([[x1,topY,z+ht],[x1,topY,z-ht],[x1,floorY,z-ht],[x1,floorY,z+ht]], sc,ec);
+    drawWorldPoly([[x2,topY,z-ht],[x2,topY,z+ht],[x2,floorY,z+ht],[x2,floorY,z-ht]], sc,ec);
+  }
+}
+
+function getAO(h, floorY) {
+  return 1.0;
+}
+
+function drawWall(x1,z1,x2,z2, fSlabY, cSlabY, floorN, seed, liftH) {
+  const ds     = getDoorwayStart(x1,z1,x2,z2,floorN,seed);
+  const lifted = !ds && isWallLifted(x1,z1,x2,z2,floorN,seed);
+  const wallTopY    = cSlabY;
+  const wallFloorY  = fSlabY;
+  const liftedFloorY = wallFloorY + liftH;
+
+  if (!ds) {
+    drawWallSegment(x1,z1,x2,z2, wallTopY, lifted ? liftedFloorY : wallFloorY);
+    if (lifted) {
+      const ht = CFG.WALL_THICKNESS / 2;
+      const isV = (x1 === x2);
+      if (isV) {
+        const zMin = Math.min(z1,z2), zMax = Math.max(z1,z2);
+        drawWorldPoly([[x1-ht,liftedFloorY,zMin],[x1+ht,liftedFloorY,zMin],[x1+ht,liftedFloorY,zMax],[x1-ht,liftedFloorY,zMax]], CFG.BASE_COL, null, 0.6);
+      } else {
+        const xMin = Math.min(x1,x2), xMax = Math.max(x1,x2);
+        drawWorldPoly([[xMin,liftedFloorY,z1-ht],[xMax,liftedFloorY,z1-ht],[xMax,liftedFloorY,z1+ht],[xMin,liftedFloorY,z1+ht]], CFG.BASE_COL, null, 0.6);
+      }
+    }
+    return;
+  }
+
+  const { openW, oStart } = ds;
+  const oEnd = oStart + openW;
+  const isV  = (x1 === x2);
+  const lintelY = wallFloorY + (wallTopY - wallFloorY) * 0.85;
+
+  if (isV) {
+    const zMin = Math.min(z1,z2), zMax = Math.max(z1,z2);
+    if (oStart > zMin) drawWallSegment(x1,zMin,x2,oStart, wallTopY,wallFloorY);
+    if (oEnd   < zMax) drawWallSegment(x1,oEnd, x2,zMax,  wallTopY,wallFloorY);
+    drawWorldPoly([[x1-CFG.WALL_THICKNESS/2,wallTopY,oStart],[x1+CFG.WALL_THICKNESS/2,wallTopY,oStart],[x1+CFG.WALL_THICKNESS/2,lintelY,oStart],[x1-CFG.WALL_THICKNESS/2,lintelY,oStart]], CFG.CEILING_COL, null);
+    drawWorldPoly([[x1-CFG.WALL_THICKNESS/2,wallTopY,oEnd],[x1+CFG.WALL_THICKNESS/2,wallTopY,oEnd],[x1+CFG.WALL_THICKNESS/2,lintelY,oEnd],[x1-CFG.WALL_THICKNESS/2,lintelY,oEnd]], CFG.CEILING_COL, null);
+  } else {
+    const xMin = Math.min(x1,x2), xMax = Math.max(x1,x2);
+    if (oStart > xMin) drawWallSegment(xMin,z1,oStart,z2, wallTopY,wallFloorY);
+    if (oEnd   < xMax) drawWallSegment(oEnd,z1,xMax,z2,   wallTopY,wallFloorY);
+    drawWorldPoly([[oStart,wallTopY,z1-CFG.WALL_THICKNESS/2],[oStart,wallTopY,z1+CFG.WALL_THICKNESS/2],[oStart,lintelY,z1+CFG.WALL_THICKNESS/2],[oStart,lintelY,z1-CFG.WALL_THICKNESS/2]], CFG.CEILING_COL, null);
+    drawWorldPoly([[oEnd,wallTopY,z1-CFG.WALL_THICKNESS/2],[oEnd,wallTopY,z1+CFG.WALL_THICKNESS/2],[oEnd,lintelY,z1+CFG.WALL_THICKNESS/2],[oEnd,lintelY,z1-CFG.WALL_THICKNESS/2]], CFG.CEILING_COL, null);
+  }
+}
+
+// ─── COLLISION ─────────────────────────────────────────────────────────────
+function checkCollision(nx, nz) {
+  const fn   = player.floorN;
+  const seed = floorSeed(fn);
+  const G    = CFG.PILLAR_SPACING;
+  const ht   = CFG.WALL_THICKNESS / 2;
+  const rad  = 12;
+  const gx   = Math.floor(nx / G) * G;
+  const gz   = Math.floor(nz / G) * G;
+
+  // If standing on top of walls (feet at or above wall top), no horizontal collision
+  const wallTopY = ceilBottomY(fn);
+  const feetY    = player.y - CFG.CAMERA_H;
+  const onWallTop = feetY >= wallTopY - 4;
+
+  const checks = [
+    [gx, gz, gx+G, gz],
+    [gx, gz+G, gx+G, gz+G],
+    [gx, gz, gx, gz+G],
+    [gx+G, gz, gx+G, gz+G],
+  ];
+
+  for (const [x1,z1,x2,z2] of checks) {
+    if (onWallTop) break; // above wall height — no side collision
+    if (!hasWall(x1,z1,x2,z2,fn,seed)) continue;
+    // No collision for walls inside the shaft volume
+    const G2 = CFG.PILLAR_SPACING;
+    const t1x = Math.floor(x1/G2)*G2, t1z = Math.floor(z1/G2)*G2;
+    const t2x = Math.floor(x2/G2)*G2, t2z = Math.floor(z2/G2)*G2;
+    if (isShaftXZ(t1x,t1z,fn) || isShaftXZ(t2x,t2z,fn)) continue;
+    const ds    = getDoorwayStart(x1,z1,x2,z2,fn,seed);
+    const openW = (ds && ds.type !== 'slit') ? ds.openW : 0;
+
+    if (!ds && isWallLifted(x1,z1,x2,z2,fn,seed)) {
+      const canCrawl = player.isCrouching && player.jumpY <= 0;
+      if (canCrawl) continue;
+    }
+
+    const isV = (x1===x2);
+    if (isV) {
+      const zMin = Math.min(z1,z2), zMax = Math.max(z1,z2);
+      const oStart = ds ? ds.oStart : Infinity;
+      const oEnd   = oStart + openW;
+      if (Math.abs(nx - x1) < ht + rad) {
+        const inOpen = ds && nz > oStart+rad && nz < oEnd-rad;
+        if (!inOpen && nz > zMin - rad && nz < zMax + rad) return true;
+      }
+    } else {
+      const xMin = Math.min(x1,x2), xMax = Math.max(x1,x2);
+      const oStart = ds ? ds.oStart : Infinity;
+      const oEnd   = oStart + openW;
+      if (Math.abs(nz - z1) < ht + rad) {
+        const inOpen = ds && nx > oStart+rad && nx < oEnd-rad;
+        if (!inOpen && nx > xMin - rad && nx < xMax + rad) return true;
+      }
+    }
+  }
+
+  // Shaft border wall collision — check all 4 faces of any shaft in range
+  if (!onWallTop) {
+  const ZS2 = ZONE_SIZE;
+  const zxP = Math.floor(nx / ZS2), zzP = Math.floor(nz / ZS2);
+  for (let dz2 = -1; dz2 <= 1; dz2++) {
+    for (let dx2 = -1; dx2 <= 1; dx2++) {
+      const s = getShaftForZone(zxP + dx2, zzP + dz2);
+      if (!s) continue;
+      if (fn < s.floorMin || fn > s.floorMax) continue;
+
+      const ht2 = ht + rad;
+
+      const dwN = getShaftDoorway(s, 'N', fn);
+      if (Math.abs(nz - s.z0) < ht2 && nx > s.x0 - rad && nx < s.x1 + rad) {
+        const seg = Math.floor(nx / G) * G;
+        if (!isShaftWallDestroyed(s, 'N', fn, seg)) {
+          if (!dwN || !(nx > dwN.oStart + rad && nx < dwN.oEnd - rad)) return true;
+        }
+      }
+      const dwS = getShaftDoorway(s, 'S', fn);
+      if (Math.abs(nz - s.z1) < ht2 && nx > s.x0 - rad && nx < s.x1 + rad) {
+        const seg = Math.floor(nx / G) * G;
+        if (!isShaftWallDestroyed(s, 'S', fn, seg)) {
+          if (!dwS || !(nx > dwS.oStart + rad && nx < dwS.oEnd - rad)) return true;
+        }
+      }
+      const dwW = getShaftDoorway(s, 'W', fn);
+      if (Math.abs(nx - s.x0) < ht2 && nz > s.z0 - rad && nz < s.z1 + rad) {
+        const seg = Math.floor(nz / G) * G;
+        if (!isShaftWallDestroyed(s, 'W', fn, seg)) {
+          if (!dwW || !(nz > dwW.oStart + rad && nz < dwW.oEnd - rad)) return true;
+        }
+      }
+      const dwE = getShaftDoorway(s, 'E', fn);
+      if (Math.abs(nx - s.x1) < ht2 && nz > s.z0 - rad && nz < s.z1 + rad) {
+        const seg = Math.floor(nz / G) * G;
+        if (!isShaftWallDestroyed(s, 'E', fn, seg)) {
+          if (!dwE || !(nz > dwE.oStart + rad && nz < dwE.oEnd - rad)) return true;
+        }
+      }
+    }
+  }
+  } // end !onWallTop shaft check
+  return false;
+}
+
+// ─── UPDATE LOOP ───────────────────────────────────────────────────────────
+let lastTime = 0;
+
+function update(dt) {
+  // Apply joystick input on mobile
+  if (isMobile) applyJoystickToKeys();
+
+  // Mouse/touch look — sensitivity scales with zoom
+  if (mouseLocked) {
+    const sensMul = zoomFOV / CFG.FOV_DEG;
+    if (isMobile) {
+      // Touch: apply raw pixel delta directly — no pointer lock accumulation lag
+      player.yaw   += touchLookDX * 0.005 * sensMul;
+      player.pitch -= touchLookDY * 0.005 * sensMul;
+      touchLookDX = touchLookDY = 0;
+    } else {
+      player.yaw   += mouseDX * CFG.MOUSE_SENS * sensMul;
+      player.pitch -= mouseDY * CFG.MOUSE_SENS * sensMul;
+      mouseDX = mouseDY = 0;
+    }
+    player.pitch = Math.max(-1.0, Math.min(1.0, player.pitch));
+  }
+
+  // Smooth zoom toward target
+  zoomFOV += (zoomTarget - zoomFOV) * 0.18;
+
+  // Crouch
+  const wantCrouch = keys['KeyC'] || keys['ControlLeft'] || keys['ControlRight'];
+  player.isCrouching = wantCrouch && !player.isJumping;
+
+  // Current floor geometry
+  const floorY   = slabTopY(player.floorN);
+
+  // Jump — allow up to 2 jumps (double jump)
+  if (keys['Space'] && !player.isCrouching && player.jumpsUsed < 2) {
+    player.isJumping = true;
+    player.jumpsUsed++;
+    const floorH = getFloorHeight(player.floorN);
+    // First jump: normal hop (~50% of floor height)
+    // Second jump: full ceiling-clear boost (original 1.15 multiplier)
+    const mult = player.jumpsUsed === 1 ? 0.5 : 1.15;
+    player.velY   = Math.sqrt(2 * CFG.GRAVITY * floorH * mult);
+    keys['Space']  = false;
+  }
+
+  // ── Vertical physics ────────────────────────────────────────────────────
+  const prevFeetY = player.y - CFG.CAMERA_H;
+  player.velY -= CFG.GRAVITY * dt;
+  player.y    += player.velY * dt;
+  const playerFeetY = player.y - CFG.CAMERA_H;
+
+  // Chase floorN down so the sweep below is always anchored near the right floor band
+  if (player.velY < 0) {
+    for (let safety = 0; safety < SHAFT.FLOOR_COUNT_MAX + 4; safety++) {
+      if (slabTopY(player.floorN - 1) + CFG.SLAB_THICKNESS > playerFeetY) player.floorN--;
+      else break;
+    }
+  }
+
+  // Chase floorN down to player's actual Y so the sweep below stays anchored
+  if (player.velY < 0) {
+    for (let safety = 0; safety < SHAFT.FLOOR_COUNT_MAX + 4; safety++) {
+      if (slabTopY(player.floorN - 1) + CFG.SLAB_THICKNESS > playerFeetY) player.floorN--;
+      else break;
+    }
+  }
+
+  // Sweep: find any floor slab crossed during this frame's movement (or currently under feet)
+  // Check from current floor down — find the highest slab whose slabTopY is between
+  // prevFeetY (start of frame) and playerFeetY (end of frame), or just at/below feet.
+  let landedFloor = null;
+  for (let dn = 1; dn >= -(SHAFT.FLOOR_COUNT_MAX + 2); dn--) {
+    const fn = player.floorN + dn;
+    const sy = slabTopY(fn);
+    // Slab was crossed if it was above prevFeetY and is now at/below playerFeetY (swept through)
+    // OR it was already below prevFeetY (normal landing from above)
+    const crossed = sy <= prevFeetY + 4 && sy >= playerFeetY - 4;
+    const below   = sy <= playerFeetY + 4 && sy > playerFeetY - CFG.CAMERA_H;
+    if (!crossed && !below) continue;
+    if (hasFloorAt(player.x, player.z, fn)) {
+      // Only land if moving downward through this slab
+      if (player.velY <= 0 && sy <= prevFeetY + 4) {
+        landedFloor = fn;
+        break;
+      }
+    }
+  }
+
+  if (landedFloor !== null && player.velY <= 0) {
+    const landY = slabTopY(landedFloor);
+    if (playerFeetY <= landY + 4) {
+      const wasAirborne = player.isJumping || player.floorN !== landedFloor;
+      player.y      = landY + CFG.CAMERA_H;
+      player.velY   = 0;
+      player.jumpY  = 0;
+      player.isJumping = false;
+      player.jumpsUsed = 0;
+      if (wasAirborne) player.landThud = true;
+      player.floorN = landedFloor;
+    }
+  }
+
+  // ── Wall top collision — stand on top of walls when no floor slab present ──
+  // Wall tops sit at ceilBottomY(fn). Check nearby walls on current and adjacent floors.
+  if (landedFloor === null && player.velY <= 0) {
+    const G    = CFG.PILLAR_SPACING;
+    const ht   = CFG.WALL_THICKNESS / 2;
+    const rad  = ht + 12; // same footprint as horizontal collision
+    const gx   = Math.floor(player.x / G) * G;
+    const gz   = Math.floor(player.z / G) * G;
+    const wallChecks = [
+      [gx, gz, gx+G, gz],
+      [gx, gz+G, gx+G, gz+G],
+      [gx, gz, gx, gz+G],
+      [gx+G, gz, gx+G, gz+G],
+    ];
+    let wallLandY = null;
+    let wallLandFn = null;
+    outer:
+    for (let dn = 1; dn >= -2; dn--) {
+      const fn   = player.floorN + dn;
+      const seed = floorSeed(fn);
+      const topY = ceilBottomY(fn); // wall top surface for this floor
+      // Only consider if feet crossed or are sitting on this surface
+      const crossed = topY <= prevFeetY + 4 && topY >= playerFeetY - 4;
+      const below   = topY <= playerFeetY + 4 && topY > playerFeetY - CFG.CAMERA_H;
+      if (!crossed && !below) continue;
+      for (const [x1,z1,x2,z2] of wallChecks) {
+        if (!hasWall(x1,z1,x2,z2,fn,seed)) continue;
+        // Skip walls inside shaft volumes
+        const t1x = Math.floor(x1/G)*G, t1z = Math.floor(z1/G)*G;
+        const t2x = Math.floor(x2/G)*G, t2z = Math.floor(z2/G)*G;
+        if (isShaftXZ(t1x,t1z,fn) || isShaftXZ(t2x,t2z,fn)) continue;
+        const isV = (x1 === x2);
+        if (isV) {
+          if (Math.abs(player.x - x1) < rad &&
+              player.z > Math.min(z1,z2) - rad && player.z < Math.max(z1,z2) + rad) {
+            wallLandY  = topY;
+            wallLandFn = fn;
+            break outer;
+          }
+        } else {
+          if (Math.abs(player.z - z1) < rad &&
+              player.x > Math.min(x1,x2) - rad && player.x < Math.max(x1,x2) + rad) {
+            wallLandY  = topY;
+            wallLandFn = fn;
+            break outer;
+          }
+        }
+      }
+    }
+    if (wallLandY !== null) {
+      const wasAirborne = player.isJumping;
+      player.y         = wallLandY + CFG.CAMERA_H;
+      player.velY      = 0;
+      player.jumpY     = 0;
+      player.isJumping = false;
+      player.jumpsUsed = 0;
+      player.floorN    = wallLandFn;
+      if (wasAirborne) player.landThud = true;
+    }
+  }
+
+  // ── Upward floor transit through holes / shafts ─────────────────────────
+  // When jumping upward, check if we punch through the ceiling into the floor above.
+  // Only allowed if the cell above is a hole, pit-room gap, or shaft void.
+  if (player.velY > 0) {
+    const headY    = player.y + (player.isCrouching ? CFG.CROUCH_H : CFG.CAMERA_H) * 0.5;
+    const fn       = player.floorN;
+    const ceilY    = ceilBottomY(fn); // bottom of slab above current floor
+    if (headY >= ceilY) {
+      const G   = CFG.PILLAR_SPACING;
+      const tx  = Math.floor(player.x / G) * G;
+      const tz  = Math.floor(player.z / G) * G;
+      const fn1 = fn + 1;
+      // Can we pass up into fn+1?
+      const shaftAbove   = getShaftAtExact(player.x, player.z, fn1);
+      const holeAbove    = isHoleCell(tx, tz, fn1);
+      const pitAbove     = isPitRoomCell(tx, tz, fn1);
+      const shaftSelf    = getShaftAtExact(player.x, player.z, fn);
+      const isInShaft    = shaftSelf !== null && fn > shaftSelf.floorMin;
+      const canPassUp    = holeAbove || pitAbove || shaftAbove !== null || isInShaft;
+      if (canPassUp) {
+        // Promote player to the floor above — they continue rising freely
+        player.floorN = fn1;
+        // Nudge player just above the new floor slab so they don't immediately snap to it
+        const newFloorY = slabTopY(fn1) + CFG.CAMERA_H + 2;
+        if (player.y < newFloorY) player.y = newFloorY;
+      } else {
+        // Solid ceiling — kill upward velocity and clamp head below slab
+        if (player.velY > 0) player.velY = 0;
+        player.y = ceilY - (player.isCrouching ? CFG.CROUCH_H : CFG.CAMERA_H) * 0.5 - 1;
+      }
+    }
+  }
+
+  // jumpY = offset above current floor walking surface
+  const onFloorY = slabTopY(player.floorN) + CFG.CAMERA_H;
+  player.jumpY = player.y - onFloorY;
+  // isJumping = true whenever not on floor
+  player.isJumping = player.jumpY > 2 || player.velY > 0;
+
+  // ── Horizontal movement ─────────────────────────────────────────────────
+  player.isRunning = (keys['ShiftLeft'] || keys['ShiftRight']) && !player.isCrouching;
+  let speed = player.isRunning ? CFG.RUN_SPEED : CFG.WALK_SPEED;
+  if (player.isCrouching) speed *= CFG.CROUCH_SPEED;
+  const fwdX =  Math.sin(player.yaw);
+  const fwdZ =  Math.cos(player.yaw);
+  const rgtX =  Math.cos(player.yaw);
+  const rgtZ = -Math.sin(player.yaw);
+  let mx = 0, mz = 0;
+  player.isMoving = false;
+
+  if (keys['KeyW'] || keys['ArrowUp'])    { mx += fwdX*speed*dt; mz += fwdZ*speed*dt; player.isMoving=true; }
+  if (keys['KeyS'] || keys['ArrowDown'])  { mx -= fwdX*speed*dt; mz -= fwdZ*speed*dt; player.isMoving=true; }
+  if (keys['KeyD'] || keys['ArrowRight']) { mx += rgtX*speed*dt; mz += rgtZ*speed*dt; player.isMoving=true; }
+  if (keys['KeyA'] || keys['ArrowLeft'])  { mx -= rgtX*speed*dt; mz -= rgtZ*speed*dt; player.isMoving=true; }
+
+  if (mx !== 0 || mz !== 0) {
+    if (!checkCollision(player.x+mx, player.z+mz)) {
+      player.x += mx; player.z += mz;
+    } else if (!checkCollision(player.x+mx, player.z)) {
+      player.x += mx;
+    } else if (!checkCollision(player.x, player.z+mz)) {
+      player.z += mz;
+    }
+  }
+
+  // ── Head bob + shake ────────────────────────────────────────────────────
+  const canBob = player.isMoving && !player.isJumping;
+  if (canBob) player.bobTime += dt * CFG.HEAD_BOB_SPEED;
+  player.shakeTime += dt;
+
+  const bobY  = canBob ? Math.sin(player.bobTime*2*Math.PI) * CFG.HEAD_BOB_AMT  : 0;
+  const bobX  = canBob ? Math.sin(player.bobTime*Math.PI)   * CFG.HEAD_BOB_SWAY : 0;
+  const shkX  = Math.sin(player.shakeTime*13.7) * 0.08;
+  const shkY  = Math.cos(player.shakeTime*11.3) * 0.08;
+
+  // Camera Y: when crouching, offset down from current world Y
+  const crouchOffset = player.isCrouching ? -(CFG.CAMERA_H - CFG.CROUCH_H) : 0;
+  const targetY = player.y + crouchOffset + bobY + shkY;
+  const effX    = player.x + bobX + shkX;
+
+  const smoothM = player.isMoving ? 0.25 : 1.0;
+  const smoothY = player.isCrouching || player.isJumping ? 0.35 : smoothM;
+  const smoothR = 0.3;
+  player.xs += (effX     - player.xs)   * smoothM;
+  player.ys += (targetY  - player.ys)   * smoothY;
+  player.zs += (player.z - player.zs)   * smoothM;
+  player.yaws   += (player.yaw   - player.yaws)   * smoothR;
+  player.pitchs += (player.pitch - player.pitchs) * smoothR;
+}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────
+function render() {
+  ctx.fillStyle = rgb(...CFG.BG_COL);
+  ctx.fillRect(0,0,W,H);
+
+  buildRenderQueue();
+  _flushPolys();
+
+  // Death fade overlay
+  if (deathFade > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${deathFade})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Vignette — grows stronger as you zoom in, like a real camcorder lens
+  const zoomT = Math.max(0, 1 - (zoomFOV - ZOOM_MIN) / (CFG.FOV_DEG - ZOOM_MIN));
+  if (zoomT > 0.01) {
+    const grad = ctx.createRadialGradient(W/2, H/2, H * 0.25, W/2, H/2, H * 0.8);
+    grad.addColorStop(0,   `rgba(0,0,0,0)`);
+    grad.addColorStop(1,   `rgba(0,0,0,${(zoomT * 0.75).toFixed(2)})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ─── AUDIO SYSTEM ──────────────────────────────────────────────────────────
+let audioCtx = null;
+let masterGain = null;
+let reverbNode = null;
+
+let footstepTimer = 0;
+let audioReady = false;
+
+
+
+
+
+function initAudio() {
+  if (!audioReady) {
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    // Resume immediately — must happen before any other work in the gesture stack
+    audioCtx.resume();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.7;
+    masterGain.connect(audioCtx.destination);
+
+    // ── Convolution reverb ──────────────────────────────────────────────────
+    reverbNode = audioCtx.createConvolver();
+    reverbNode.buffer = makeReverbIR(audioCtx, 2.8, 0.18);
+    const reverbGain = audioCtx.createGain();
+    reverbGain.gain.value = 0.45;
+    reverbNode.connect(reverbGain);
+    reverbGain.connect(masterGain);
+
+    audioReady = true;
+  } else if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+// ── Reverb impulse response (exponentially decaying noise) ─────────────────
+function makeReverbIR(ctx, duration, decay) {
+  const sr      = ctx.sampleRate;
+  const length  = sr * duration;
+  const buf     = ctx.createBuffer(2, length, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      // Noise decays exponentially, with a slight early-reflection spike
+      const t = i / sr;
+      const env = Math.exp(-decay * t * 12);
+      data[i] = (Math.random() * 2 - 1) * env;
+      // Early reflections at ~15ms and ~30ms
+      if (i === Math.floor(0.015 * sr) || i === Math.floor(0.030 * sr)) {
+        data[i] += (Math.random() * 2 - 1) * 0.6;
+      }
+    }
+  }
+  return buf;
+}
+
+function updateRoomAcoustics() {
+  if (!audioReady) return;
+  const G = CFG.PILLAR_SPACING;
+  const px = player.x, pz = player.z;
+  const fn = player.floorN;
+  const seed = floorSeed(fn);
+  const gx = Math.floor(px / G) * G;
+  const gz = Math.floor(pz / G) * G;
+  let openCount = 0;
+  const checks = [
+    [gx,gz,gx+G,gz], [gx,gz+G,gx+G,gz+G],
+    [gx,gz,gx,gz+G], [gx+G,gz,gx+G,gz+G],
+  ];
+  for (const [x1,z1,x2,z2] of checks) {
+    const door = getDoorway(x1,z1,x2,z2,fn,seed);
+    if (door) openCount++;
+  }
+  const openness = openCount / 4;
+  const targetRev = 0.25 + openness * 0.55;
+  world._openness = openness;
+}
+
+// ── Carpet footstep (soft, muffled thud + fabric noise) ────────────────────
+function playFootstep(turnFactor) {
+  if (!audioReady) return;
+  const t   = audioCtx.currentTime;
+  const dur = 0.16;
+  const tf  = Math.max(0, Math.min(1, turnFactor || 0));
+
+  // Noise burst filtered heavily (carpet absorption)
+  const bufSize = audioCtx.sampleRate * dur;
+  const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+  const noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = noiseBuf;
+
+  // Low-pass: carpet soaks up highs. More muffled when turning.
+  const lpf = audioCtx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = 280 - tf * 80;
+  lpf.Q.value = 0.5;
+
+  // Deep bass "pressure" thud
+  const bassOsc = audioCtx.createOscillator();
+  bassOsc.type = 'sine';
+  bassOsc.frequency.setValueAtTime(42, t);
+  bassOsc.frequency.exponentialRampToValueAtTime(22, t + dur);
+  const bassEnv = audioCtx.createGain();
+  bassEnv.gain.setValueAtTime(0.18, t);
+  bassEnv.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  // Envelope on noise
+  const noiseEnv = audioCtx.createGain();
+  const attack = 0.008, decay = dur - attack;
+  noiseEnv.gain.setValueAtTime(0, t);
+  noiseEnv.gain.linearRampToValueAtTime(0.28, t + attack);
+  noiseEnv.gain.linearRampToValueAtTime(0, t + dur);
+
+  // Master step gain
+  const stepGain = audioCtx.createGain();
+  stepGain.gain.value = 0.38;
+
+  noiseSource.connect(lpf);
+  lpf.connect(noiseEnv);
+  noiseEnv.connect(stepGain);
+  bassOsc.connect(bassEnv);
+  bassEnv.connect(stepGain);
+  stepGain.connect(masterGain);
+  // Subtle reverb send for footsteps
+  const stepRevGain = audioCtx.createGain();
+  stepRevGain.gain.value = 0.15 + (world._openness || 0) * 0.25;
+  stepGain.connect(stepRevGain);
+  stepRevGain.connect(reverbNode);
+
+  noiseSource.start(t); noiseSource.stop(t + dur);
+  bassOsc.start(t);     bassOsc.stop(t + dur);
+}
+
+// ── Landing thud (heavier impact when returning from jump) ─────────────────
+function playLandThud() {
+  if (!audioReady) return;
+  const t   = audioCtx.currentTime;
+  const dur = 0.22;
+
+  // Noise burst — harder impact than a footstep
+  const bufSize = audioCtx.sampleRate * dur;
+  const noiseBuf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = noiseBuf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+  const noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = noiseBuf;
+
+  const lpf = audioCtx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.frequency.value = 220;
+  lpf.Q.value = 0.7;
+
+  const bassOsc = audioCtx.createOscillator();
+  bassOsc.type = 'sine';
+  bassOsc.frequency.setValueAtTime(55, t);
+  bassOsc.frequency.exponentialRampToValueAtTime(18, t + dur);
+  const bassEnv = audioCtx.createGain();
+  bassEnv.gain.setValueAtTime(0.32, t);
+  bassEnv.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  const noiseEnv = audioCtx.createGain();
+  noiseEnv.gain.setValueAtTime(0, t);
+  noiseEnv.gain.linearRampToValueAtTime(0.45, t + 0.01);
+  noiseEnv.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+  const stepGain = audioCtx.createGain();
+  stepGain.gain.value = 0.6;
+
+  noiseSource.connect(lpf);
+  lpf.connect(noiseEnv);
+  noiseEnv.connect(stepGain);
+  bassOsc.connect(bassEnv);
+  bassEnv.connect(stepGain);
+  stepGain.connect(masterGain);
+  const revGain = audioCtx.createGain();
+  revGain.gain.value = 0.25 + (world._openness || 0) * 0.3;
+  stepGain.connect(revGain);
+  revGain.connect(reverbNode);
+
+  noiseSource.start(t); noiseSource.stop(t + dur);
+  bassOsc.start(t);     bassOsc.stop(t + dur);
+}
+
+// ── Footstep timing ────────────────────────────────────────────────────────
+function updateFootsteps(dt) {
+  // Fire landing thud (consumed immediately)
+  if (player.landThud) {
+    player.landThud = false;
+    playLandThud();
+    footstepTimer = 0;
+    return;
+  }
+  if (!player.isMoving || player.isJumping) { footstepTimer = 0; return; }
+  const interval = player.isRunning ? 0.32 : player.isCrouching ? 0.70 : 0.52;
+  footstepTimer += dt;
+  if (footstepTimer >= interval) {
+    footstepTimer -= interval;
+    const turnFactor = Math.min(1, Math.abs(player.yaw - player.yaws) * 3);
+    playFootstep(turnFactor);
+  }
+}
+
+// ─── MAIN LOOP ─────────────────────────────────────────────────────────────
+function loop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+  if (mouseLocked && !isDead) {
+    update(dt);
+    updateFootsteps(dt);
+    updateRoomAcoustics();
+  }
+  if (mouseLocked || isDead) render();
+  requestAnimationFrame(loop);
+}
+
+
+// ─── INIT ───────────────────────────────────────────────────────────────────
+// Update overlay hint based on device
+if (!isMobile) {
+  document.getElementById('overlay-hint').textContent = 'CLICK TO ENTER';
+}
+setupMobileControls();
+
+requestAnimationFrame(t => { lastTime = t; requestAnimationFrame(loop); });
+
+// ── PWA Service Worker (inline, registered via blob URL) ───────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'backrooms-v1';
+self.addEventListener('install', e => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(self.clients.claim());
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    caches.open(CACHE).then(cache =>
+      cache.match(e.request).then(hit => {
+        if (hit) return hit;
+        return fetch(e.request).then(res => {
+          if (res && res.status === 200) cache.put(e.request, res.clone());
+          return res;
+        }).catch(() => hit);
+      })
+    )
+  );
+});
+`;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swURL  = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL, { scope: './' })
+    .catch(() => {}); // silently fail if blocked (file:// etc)
+}
+
+</script>
+</body>
+</html>

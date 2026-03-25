@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>THE BACKROOMS</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #000;
+  font-family: 'Courier New', monospace;
+  color: #f0e060;
+}
+
+/* ── Animated background grid ── */
+#bg {
+  position: fixed; inset: 0; z-index: 0;
+  overflow: hidden;
+}
+#bg canvas { display: block; width: 100%; height: 100%; }
+
+/* ── Scanline overlay ── */
+#scan {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0,0,0,0.18) 3px,
+    rgba(0,0,0,0.18) 4px
+  );
+}
+
+/* ── Main UI ── */
+#ui {
+  position: relative; z-index: 2;
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  gap: 0;
+  overflow: hidden;
+}
+
+.title-block {
+  text-align: center;
+  margin-bottom: clamp(1.5rem, 4vh, 3rem);
+  flex-shrink: 0;
+}
+.title-block h1 {
+  font-size: clamp(1.8rem, 8vw, 5rem);
+  letter-spacing: 0.45em;
+  text-shadow: 0 0 60px #f0e06099, 0 0 20px #f0e060cc;
+  animation: flicker 8s infinite;
+}
+.title-block .sub {
+  color: #888;
+  font-size: clamp(0.6rem, 1.8vw, 0.85rem);
+  letter-spacing: 0.3em;
+  margin-top: 0.5rem;
+}
+
+@keyframes flicker {
+  0%,100%   { opacity: 1; }
+  92%        { opacity: 1; }
+  93%        { opacity: 0.4; }
+  94%        { opacity: 1; }
+  96%        { opacity: 0.6; }
+  97%        { opacity: 1; }
+}
+
+/* ── Scroll track ── */
+.scroll-track-wrap {
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* Fade edges */
+.scroll-track-wrap::before,
+.scroll-track-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: clamp(30px, 6vw, 80px);
+  z-index: 3;
+  pointer-events: none;
+}
+.scroll-track-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, #000 0%, transparent 100%);
+}
+.scroll-track-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, #000 0%, transparent 100%);
+}
+
+.levels {
+  display: flex;
+  flex-direction: row;
+  gap: clamp(1rem, 2.5vw, 2rem);
+  padding: 1rem clamp(40px, 8vw, 100px) 1.5rem;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+.levels::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+
+/* ── Arrow scroll buttons ── */
+.scroll-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  background: transparent;
+  border: 1px solid rgba(240,224,96,0.2);
+  color: rgba(240,224,96,0.5);
+  font-family: 'Courier New', monospace;
+  font-size: 1rem;
+  width: 2rem; height: 2.5rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.scroll-arrow:hover {
+  color: #f0e060;
+  border-color: rgba(240,224,96,0.7);
+  background: rgba(240,224,96,0.07);
+}
+.scroll-arrow.left  { left:  clamp(4px, 1.2vw, 16px); }
+.scroll-arrow.right { right: clamp(4px, 1.2vw, 16px); }
+
+/* ── Level cards ── */
+.level-card {
+  position: relative;
+  flex-shrink: 0;
+  width: clamp(200px, 28vw, 300px);
+  padding: clamp(1.2rem, 3vh, 2rem) clamp(1rem, 2.5vw, 1.8rem);
+  border: 1px solid rgba(240, 224, 96, 0.25);
+  background: rgba(0,0,0,0.6);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  text-decoration: none;
+  display: flex; flex-direction: column; align-items: flex-start;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+  scroll-snap-align: center;
+}
+.level-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(240,224,96,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+.level-card:hover {
+  border-color: rgba(240, 224, 96, 0.7);
+  background: rgba(240, 224, 96, 0.07);
+  transform: translateY(-3px);
+}
+.level-card:hover .level-enter { opacity: 1; }
+.level-card:active { transform: translateY(0px); }
+
+/* ── Accent variants ── */
+
+/* blue — Level 1 */
+.level-card.blue { border-color: rgba(96, 128, 255, 0.25); }
+.level-card.blue::before { background: linear-gradient(135deg, rgba(96,128,255,0.05) 0%, transparent 60%); }
+.level-card.blue:hover { border-color: rgba(96, 128, 255, 0.7); background: rgba(96, 128, 255, 0.07); }
+.level-card.blue .level-num,
+.level-card.blue .level-enter { color: #6080ff; text-shadow: 0 0 20px #4060ffaa; }
+.level-card.blue .corner-glow { background: #6080ff; }
+.level-card.blue .tag { border-color: rgba(96,128,255,0.2); }
+
+/* green — Levels 2 & 4 */
+.level-card.green { border-color: rgba(60, 200, 100, 0.25); }
+.level-card.green::before { background: linear-gradient(135deg, rgba(60,200,100,0.05) 0%, transparent 60%); }
+.level-card.green:hover { border-color: rgba(60, 200, 100, 0.7); background: rgba(60, 200, 100, 0.07); }
+.level-card.green .level-num,
+.level-card.green .level-enter { color: #3cc864; text-shadow: 0 0 20px #20a04488; }
+.level-card.green .corner-glow { background: #3cc864; }
+.level-card.green .tag { border-color: rgba(60,200,100,0.2); }
+
+/* purple — Level 3 */
+.level-card.purple { border-color: rgba(192, 96, 255, 0.25); }
+.level-card.purple::before { background: linear-gradient(135deg, rgba(192,96,255,0.05) 0%, transparent 60%); }
+.level-card.purple:hover { border-color: rgba(192, 96, 255, 0.7); background: rgba(192, 96, 255, 0.07); }
+.level-card.purple .level-num,
+.level-card.purple .level-enter { color: #c060ff; text-shadow: 0 0 20px #a040dd88; }
+.level-card.purple .corner-glow { background: #c060ff; }
+.level-card.purple .tag { border-color: rgba(192,96,255,0.2); }
+
+/* cyan — Level 5 */
+.level-card.cyan { border-color: rgba(91, 214, 245, 0.25); }
+.level-card.cyan::before { background: linear-gradient(135deg, rgba(91,214,245,0.05) 0%, transparent 60%); }
+.level-card.cyan:hover { border-color: rgba(91, 214, 245, 0.7); background: rgba(91, 214, 245, 0.07); }
+.level-card.cyan .level-num,
+.level-card.cyan .level-enter { color: #5bd6f5; text-shadow: 0 0 20px #30b0d088; }
+.level-card.cyan .corner-glow { background: #5bd6f5; }
+.level-card.cyan .tag { border-color: rgba(91,214,245,0.2); }
+
+/* orange — Level 6 */
+.level-card.orange { border-color: rgba(240, 180, 40, 0.25); }
+.level-card.orange::before { background: linear-gradient(135deg, rgba(240,180,40,0.05) 0%, transparent 60%); }
+.level-card.orange:hover { border-color: rgba(240, 180, 40, 0.7); background: rgba(240, 180, 40, 0.07); }
+.level-card.orange .level-num,
+.level-card.orange .level-enter { color: #f0b428; text-shadow: 0 0 20px #d09010aa; }
+.level-card.orange .corner-glow { background: #f0b428; }
+.level-card.orange .tag { border-color: rgba(240,180,40,0.2); }
+
+/* ── Card internals ── */
+.level-num {
+  font-size: clamp(0.6rem, 1.5vw, 0.75rem);
+  letter-spacing: 0.35em;
+  color: #f0e060;
+  text-shadow: 0 0 20px #f0e060aa;
+  margin-bottom: 0.6rem;
+  opacity: 0.8;
+}
+.level-name {
+  font-size: clamp(1rem, 2.8vw, 1.5rem);
+  letter-spacing: 0.25em;
+  color: #fff;
+  margin-bottom: 0.8rem;
+  font-weight: bold;
+}
+.level-desc {
+  font-size: clamp(0.55rem, 1.4vw, 0.72rem);
+  color: #666;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+  margin-bottom: 1.2rem;
+}
+.level-tags {
+  display: flex; gap: 0.4rem; flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.tag {
+  font-size: clamp(0.45rem, 1.1vw, 0.58rem);
+  letter-spacing: 0.15em;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(240,224,96,0.2);
+  color: #888;
+}
+.level-enter {
+  font-size: clamp(0.6rem, 1.5vw, 0.72rem);
+  letter-spacing: 0.35em;
+  color: #f0e060;
+  opacity: 0;
+  transition: opacity 0.2s;
+  animation: blink 1.2s infinite;
+}
+.corner-glow {
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 60px; height: 60px;
+  background: #f0e060;
+  opacity: 0.04;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.level-card:hover .corner-glow { opacity: 0.1; }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.1} }
+
+/* ── Scroll indicator dots ── */
+.scroll-dots {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 1rem;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.scroll-dot {
+  width: 5px; height: 5px;
+  background: rgba(240,224,96,0.2);
+  border-radius: 50%;
+  transition: background 0.2s, transform 0.2s;
+  cursor: pointer;
+}
+.scroll-dot.active {
+  background: rgba(240,224,96,0.8);
+  transform: scale(1.4);
+}
+
+/* ── Footer ── */
+.footer {
+  position: fixed; bottom: 1.2rem; left: 0; right: 0;
+  text-align: center;
+  color: #333;
+  font-size: clamp(0.5rem, 1.2vw, 0.62rem);
+  letter-spacing: 0.25em;
+  z-index: 2;
+}
+
+/* ── Transition overlay ── */
+#transition {
+  position: fixed; inset: 0; z-index: 100;
+  background: #000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease-in;
+}
+#transition.fade { opacity: 1; pointer-events: all; }
+
+/* ── Mobile ── */
+@media (max-width: 500px) {
+  .level-card { width: min(78vw, 300px); }
+  .level-enter { opacity: 1 !important; }
+  .scroll-arrow { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="bg"><canvas id="bgc"></canvas></div>
+<div id="scan"></div>
+<div id="transition"></div>
+
+<div id="ui">
+  <div class="title-block">
+    <h1>THE BACKROOMS</h1>
+    <div class="sub">SELECT LEVEL TO ENTER</div>
+  </div>
+
+  <div class="scroll-track-wrap">
+    <button class="scroll-arrow left"  onclick="scrollLevels(-1)" aria-label="Scroll left">‹</button>
+    <button class="scroll-arrow right" onclick="scrollLevels(1)"  aria-label="Scroll right">›</button>
+
+    <div class="levels" id="levels">
+
+      <!-- Level 0 -->
+      <a class="level-card" href="level_0_-_The_Hub.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 0</div>
+        <div class="level-name">THE FLOORS</div>
+        <div class="level-desc">
+          Multi-floor vertical shaft complex.<br>
+          Mind the gaps — some floors have no bottom.
+        </div>
+        <div class="level-tags">
+          <span class="tag">VERTICAL</span>
+          <span class="tag">SHAFTS</span>
+          <span class="tag">MULTI-FLOOR</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 1 -->
+      <a class="level-card blue" href="level_1_-_The_Rooms.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 1</div>
+        <div class="level-name">THE ROOMS</div>
+        <div class="level-desc">
+          Infinite procedural corridors.<br>
+          Walk through any doorway — no way back.
+        </div>
+        <div class="level-tags">
+          <span class="tag">INFINITE</span>
+          <span class="tag">CORRIDORS</span>
+          <span class="tag">PROCEDURAL</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 2 -->
+      <a class="level-card green" href="level_2_-_The_Corridor.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 2</div>
+        <div class="level-name">THE HALLWAYS</div>
+        <div class="level-desc">
+          One hallway, forward and backward.<br>
+          No exits. No turns. Just depth.
+        </div>
+        <div class="level-tags">
+          <span class="tag">INFINITE</span>
+          <span class="tag">LINEAR</span>
+          <span class="tag">FORWARD</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 3 -->
+      <a class="level-card purple" href="level_3_-_The_Passage.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 3</div>
+        <div class="level-name">THE HALLWAYS</div>
+        <div class="level-desc">
+          One hallway, left and right.<br>
+          The walls never end. Neither do you.
+        </div>
+        <div class="level-tags">
+          <span class="tag">INFINITE</span>
+          <span class="tag">LATERAL</span>
+          <span class="tag">SIDEWAYS</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 4 -->
+      <a class="level-card green" href="level_4_-_The_Intersections.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 4</div>
+        <div class="level-name">THE INTERSECTIONS</div>
+        <div class="level-desc">
+          Two hallways cross at a single point.<br>
+          Four directions. No way out.
+        </div>
+        <div class="level-tags">
+          <span class="tag">INFINITE</span>
+          <span class="tag">CROSSING</span>
+          <span class="tag">JUNCTION</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 5 -->
+      <a class="level-card cyan" href="level_5_-_The_Pool.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 5</div>
+        <div class="level-name">THE POOL</div>
+        <div class="level-desc">
+          One room. One pool. Infinite in depth.<br>
+          Dive in — the bottom does not exist.
+        </div>
+        <div class="level-tags">
+          <span class="tag">AQUATIC</span>
+          <span class="tag">VERTICAL</span>
+          <span class="tag">INFINITE</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!-- Level 6 -->
+      <a class="level-card orange" href="level_6_-_The_Outside.html" onclick="return goTo(event, this.href)">
+        <div class="level-num">LEVEL 6</div>
+        <div class="level-name">THE OUTSIDE</div>
+        <div class="level-desc">
+          Open sky. No ceiling. No walls.<br>
+          Are you outside? The colors say yes.
+        </div>
+        <div class="level-tags">
+          <span class="tag">INFINITE</span>
+          <span class="tag">OPEN</span>
+          <span class="tag">OUTSIDE?</span>
+        </div>
+        <div class="level-enter">ENTER ›</div>
+        <div class="corner-glow"></div>
+      </a>
+
+      <!--
+        ┌─────────────────────────────────────────────┐
+        │  TO ADD A NEW LEVEL — copy this block:      │
+        │                                             │
+        │  <a class="level-card [COLOR]"              │
+        │     href="level_N_-_Name.html"              │
+        │     onclick="return goTo(event,this.href)"> │
+        │    <div class="level-num">LEVEL N</div>     │
+        │    <div class="level-name">NAME</div>       │
+        │    <div class="level-desc">…</div>          │
+        │    <div class="level-tags">                 │
+        │      <span class="tag">TAG</span>           │
+        │    </div>                                   │
+        │    <div class="level-enter">ENTER ›</div>   │
+        │    <div class="corner-glow"></div>          │
+        │  </a>                                       │
+        │                                             │
+        │  COLOR options: (none) blue green purple    │
+        │                 cyan  orange               │
+        └─────────────────────────────────────────────┘
+      -->
+
+    </div><!-- /.levels -->
+  </div><!-- /.scroll-track-wrap -->
+
+  <div class="scroll-dots" id="dots"></div>
+</div>
+
+<div class="footer">WASD · MOUSE · SHIFT TO RUN · SPACE TO JUMP</div>
+
+<script>
+// ── Fade transition ──────────────────────────────────────────────────────────
+function goTo(e, href) {
+  e.preventDefault();
+  playEnter();
+  const t = document.getElementById('transition');
+  setTimeout(() => t.classList.add('fade'), 80);
+  setTimeout(() => { window.location.href = href; }, 500);
+  return false;
+}
+
+// ── Scroll helpers ───────────────────────────────────────────────────────────
+const levelsEl = document.getElementById('levels');
+const dotsEl   = document.getElementById('dots');
+
+function getCards() { return levelsEl.querySelectorAll('.level-card'); }
+
+function buildDots() {
+  dotsEl.innerHTML = '';
+  getCards().forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'scroll-dot';
+    d.onclick = () => scrollToCard(i);
+    dotsEl.appendChild(d);
+  });
+  updateDots();
+}
+
+function updateDots() {
+  const cards = getCards();
+  const trackLeft = levelsEl.scrollLeft;
+  let closest = 0, minDist = Infinity;
+  cards.forEach((c, i) => {
+    const dist = Math.abs(c.offsetLeft - c.offsetWidth / 2 - trackLeft - levelsEl.offsetWidth / 2);
+    if (dist < minDist) { minDist = dist; closest = i; }
+  });
+  dotsEl.querySelectorAll('.scroll-dot').forEach((d, i) => {
+    d.classList.toggle('active', i === closest);
+  });
+}
+
+function scrollToCard(i) {
+  const cards = getCards();
+  if (!cards[i]) return;
+  const card = cards[i];
+  const target = card.offsetLeft - (levelsEl.offsetWidth / 2) + (card.offsetWidth / 2);
+  levelsEl.scrollTo({ left: target, behavior: 'smooth' });
+}
+
+function scrollLevels(dir) {
+  const cards = getCards();
+  const trackLeft = levelsEl.scrollLeft;
+  let current = 0, minDist = Infinity;
+  cards.forEach((c, i) => {
+    const dist = Math.abs(c.offsetLeft - c.offsetWidth / 2 - trackLeft - levelsEl.offsetWidth / 2);
+    if (dist < minDist) { minDist = dist; current = i; }
+  });
+  scrollToCard(Math.max(0, Math.min(cards.length - 1, current + dir)));
+}
+
+levelsEl.addEventListener('scroll', updateDots, { passive: true });
+buildDots();
+
+// ── Animated background — infinite receding corridor ─────────────────────────
+const bgCanvas = document.getElementById('bgc');
+const bgCtx = bgCanvas.getContext('2d');
+let bW, bH;
+
+function resizeBg() {
+  bW = bgCanvas.width  = bgCanvas.offsetWidth;
+  bH = bgCanvas.height = bgCanvas.offsetHeight;
+}
+resizeBg();
+window.addEventListener('resize', resizeBg);
+
+let depth = 0;
+const LINES = 14;
+const SPEED = 0.004;
+
+function drawBg() {
+  bgCtx.clearRect(0, 0, bW, bH);
+  bgCtx.fillStyle = '#000';
+  bgCtx.fillRect(0, 0, bW, bH);
+
+  const cx = bW / 2, cy = bH / 2;
+  depth = (depth + SPEED) % 1;
+
+  for (let layer = 0; layer < LINES; layer++) {
+    const t = ((layer / LINES) + depth) % 1;
+    const z = Math.pow(t, 1.8);
+    if (z < 0.01) continue;
+
+    const alpha = Math.min(1, z * 1.2) * 0.18;
+    const halfW = (bW * 0.42) * z;
+    const yFloor = cy + (bH * 0.45) * z;
+    const yCeil  = cy - (bH * 0.45) * z;
+
+    bgCtx.strokeStyle = `rgba(240,224,96,${alpha})`;
+    bgCtx.lineWidth = 1;
+
+    bgCtx.beginPath(); bgCtx.moveTo(cx - halfW, yFloor); bgCtx.lineTo(cx + halfW, yFloor); bgCtx.stroke();
+    bgCtx.beginPath(); bgCtx.moveTo(cx - halfW, yCeil);  bgCtx.lineTo(cx + halfW, yCeil);  bgCtx.stroke();
+    bgCtx.beginPath(); bgCtx.moveTo(cx - halfW, yCeil);  bgCtx.lineTo(cx - halfW, yFloor); bgCtx.stroke();
+    bgCtx.beginPath(); bgCtx.moveTo(cx + halfW, yCeil);  bgCtx.lineTo(cx + halfW, yFloor); bgCtx.stroke();
+  }
+
+  const railAlpha = 0.07;
+  bgCtx.strokeStyle = `rgba(240,224,96,${railAlpha})`;
+  bgCtx.lineWidth = 1;
+  const edgeW = bW * 0.42, edgeH = bH * 0.45;
+  bgCtx.beginPath(); bgCtx.moveTo(cx, cy); bgCtx.lineTo(cx - edgeW, cy + edgeH); bgCtx.stroke();
+  bgCtx.beginPath(); bgCtx.moveTo(cx, cy); bgCtx.lineTo(cx + edgeW, cy + edgeH); bgCtx.stroke();
+  bgCtx.beginPath(); bgCtx.moveTo(cx, cy); bgCtx.lineTo(cx - edgeW, cy - edgeH); bgCtx.stroke();
+  bgCtx.beginPath(); bgCtx.moveTo(cx, cy); bgCtx.lineTo(cx + edgeW, cy - edgeH); bgCtx.stroke();
+
+  const vg = bgCtx.createRadialGradient(cx, cy, bH * 0.1, cx, cy, bH * 0.8);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.85)');
+  bgCtx.fillStyle = vg;
+  bgCtx.fillRect(0, 0, bW, bH);
+
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ── Audio ────────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let ambientStarted = false;
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function startAmbient() {
+  if (ambientStarted) return;
+  ambientStarted = true;
+  const ctx = getAudio();
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0, ctx.currentTime);
+  master.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 3.5);
+  master.connect(ctx.destination);
+
+  const rev = ctx.createConvolver();
+  const revLen = ctx.sampleRate * 3;
+  const revBuf = ctx.createBuffer(2, revLen, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = revBuf.getChannelData(ch);
+    for (let i = 0; i < revLen; i++) d[i] = (Math.random()*2-1) * Math.exp(-i / (ctx.sampleRate * 0.9));
+  }
+  rev.buffer = revBuf;
+  const revGain = ctx.createGain(); revGain.gain.value = 0.5;
+  rev.connect(revGain); revGain.connect(master);
+
+  const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = 55;
+  const g1 = ctx.createGain(); g1.gain.value = 0.6;
+  o1.connect(g1); g1.connect(master); g1.connect(rev); o1.start();
+
+  const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 55.7;
+  const g2 = ctx.createGain(); g2.gain.value = 0.4;
+  o2.connect(g2); g2.connect(master); g2.connect(rev); o2.start();
+
+  const o3 = ctx.createOscillator(); o3.type = 'sine'; o3.frequency.value = 220.3;
+  const g3 = ctx.createGain(); g3.gain.value = 0.08;
+  o3.connect(g3); g3.connect(master); g3.connect(rev); o3.start();
+
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
+  const lfoG = ctx.createGain(); lfoG.gain.value = 0.05;
+  lfo.connect(lfoG); lfoG.connect(g3.gain); lfo.start();
+
+  function noiseLoop() {
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 180;
+    const ng = ctx.createGain(); ng.gain.value = 0.04;
+    src.connect(lpf); lpf.connect(ng); ng.connect(master);
+    src.start(); src.stop(ctx.currentTime + 2);
+    src.onended = noiseLoop;
+  }
+  noiseLoop();
+}
+
+function playHover() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 880;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.12, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t + 0.08);
+
+  const o2 = ctx.createOscillator(); o2.type = 'sine'; o2.frequency.value = 1320;
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0.06, t + 0.02);
+  g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  o2.connect(g2); g2.connect(ctx.destination);
+  o2.start(t + 0.02); o2.stop(t + 0.09);
+}
+
+function playEnter() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(120, t);
+  o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.5, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t + 0.35);
+
+  const o2 = ctx.createOscillator(); o2.type = 'sawtooth';
+  o2.frequency.setValueAtTime(2200, t);
+  o2.frequency.exponentialRampToValueAtTime(200, t + 0.25);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0.08, t);
+  g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+  const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 1200;
+  o2.connect(lpf); lpf.connect(g2); g2.connect(ctx.destination);
+  o2.start(t); o2.stop(t + 0.28);
+}
+
+function unlockAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioCtx.resume().then(() => startAmbient());
+}
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+
+document.querySelectorAll('.level-card').forEach(card => {
+  card.addEventListener('mouseenter', () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume().then(() => { startAmbient(); playHover(); });
+  });
+});
+</script>
+</body>
+</html>
